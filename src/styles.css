@@ -79,9 +79,9 @@ button {
   z-index: 45;
   isolation: isolate;
   display: grid;
-  grid-template-rows: minmax(260px, 46vh) auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   justify-items: center;
-  gap: 24px;
+  gap: 28px;
   padding: calc(34px + var(--safe-top)) calc(22px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(22px + var(--safe-left));
   overflow-y: auto;
   background: #f7f7f3;
@@ -138,6 +138,8 @@ button {
   align-self: center;
   width: min(780px, 92vw);
   aspect-ratio: 2 / 1;
+  max-height: min(390px, 43dvh);
+  margin-top: 10px;
   min-height: 0;
   overflow: hidden;
   display: grid;
@@ -204,7 +206,7 @@ button {
 }
 
 .start-screen > .start-button {
-  margin-top: 2px;
+  margin-top: 8px;
 }
 
 .setup-panel {
@@ -616,7 +618,7 @@ button {
   position: absolute;
   top: calc(18px + var(--safe-top));
   right: calc(18px + var(--safe-right));
-  width: clamp(248px, 17.6vw, 312px);
+  width: clamp(208px, 14.5vw, 260px);
   max-height: calc(100dvh - 36px - var(--safe-top) - var(--safe-bottom));
   display: grid;
   gap: 12px;
@@ -632,7 +634,7 @@ button {
 .seeker-panel {
   border: 1px solid rgba(20, 20, 20, 0.14);
   border-radius: 8px;
-  background: rgba(255, 255, 252, 0.9);
+  background: rgba(255, 255, 252, 0.78);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
 }
 
@@ -646,6 +648,7 @@ button {
   aspect-ratio: 1;
   display: block;
   background: #fafaf7;
+  opacity: 0.86;
 }
 
 .seeker-panel {
@@ -2184,7 +2187,7 @@ button {
 
 @media (max-width: 840px) {
   .start-screen {
-    grid-template-rows: minmax(220px, 38dvh) auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     padding: calc(22px + var(--safe-top)) calc(12px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(12px + var(--safe-left));
     gap: 20px;
   }
@@ -2192,6 +2195,7 @@ button {
   .hero-image {
     width: min(92vw, 640px);
     height: clamp(240px, 38dvh, 320px);
+    margin-top: 8px;
     aspect-ratio: auto;
   }
 
@@ -2304,7 +2308,7 @@ button {
   }
 
   .start-screen {
-    grid-template-rows: minmax(270px, 41dvh) auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     align-content: start;
     gap: 22px;
   }
@@ -2316,6 +2320,7 @@ button {
   .hero-image {
     width: min(92vw, 420px);
     height: clamp(270px, 40dvh, 330px);
+    margin-top: 8px;
     min-height: 0;
   }
 
@@ -2332,7 +2337,7 @@ button {
   }
 
   .start-screen > .start-button {
-    margin-top: 2px;
+    margin-top: 8px;
   }
 
   .start-links {
@@ -2638,7 +2643,8 @@ button {
 
   .hero-image {
     width: min(760px, 78vw);
-    height: 190px;
+    height: min(190px, 42dvh);
+    margin-top: 4px;
     aspect-ratio: auto;
   }
 
@@ -2662,6 +2668,7 @@ button {
 
   .start-button {
     min-width: min(340px, 56vw);
+    margin-top: 6px;
   }
 
   .start-links {
