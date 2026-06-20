@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>TheSeekerLabyrinth</title>
+  </head>
+  <body>
+    <canvas id="world"></canvas>
+
+    <main id="hud" aria-label="TheSeekerLabyrinth">
+      <section id="startScreen" class="start-screen" aria-label="Main menu">
+        <div class="hero-image">
+          <div class="hero-island hero-island-main" aria-hidden="true"></div>
+          <h1>TheSeekerLabyrinth</h1>
+        </div>
+
+        <button id="startButton" class="start-button" type="button">Start</button>
+
+        <section id="startSetup" class="setup-panel hidden" aria-label="Round setup">
+          <section class="setup-difficulty-category" aria-label="Difficulty">
+            <h2>Difficulty</h2>
+            <div class="difficulty-grid" aria-label="Difficulty presets">
+              <button data-difficulty="easy" class="active" type="button">Easy</button>
+              <button data-difficulty="medium" type="button">Medium</button>
+              <button data-difficulty="hard" type="button">Hard</button>
+              <button data-difficulty="veryHard" type="button">Very Hard</button>
+            </div>
+
+            <div class="setup-divider" aria-hidden="true"></div>
+
+            <select id="startWorldSelect" class="hidden-start-world" aria-hidden="true" tabindex="-1"></select>
+
+            <div class="control-line stepper-line">
+              <span>Gem amount</span>
+              <input id="startGemGoalInput" type="hidden" min="3" max="20" value="8" />
+              <div class="stepper" data-stepper-for="startGemGoalInput" role="group" aria-label="Gem amount">
+                <button type="button" data-step="-1" aria-label="Decrease gem amount">-</button>
+                <output id="startGemGoalValue">8</output>
+                <button type="button" data-step="1" aria-label="Increase gem amount">+</button>
+              </div>
+            </div>
+
+            <div class="control-line stepper-line">
+              <span>Seekers</span>
+              <input id="startSeekerCountInput" type="hidden" min="1" max="30" value="3" />
+              <div class="stepper" data-stepper-for="startSeekerCountInput" role="group" aria-label="Seekers">
+                <button type="button" data-step="-1" aria-label="Decrease seekers">-</button>
+                <output id="startSeekerCountValue">3</output>
+                <button type="button" data-step="1" aria-label="Increase seekers">+</button>
+              </div>
+            </div>
+
+            <div class="control-line stepper-line">
+              <span>Seeker speed</span>
+              <input id="startSeekerSpeedInput" type="hidden" min="1" max="5" value="3" />
+              <div class="stepper" data-stepper-for="startSeekerSpeedInput" role="group" aria-label="Seeker speed">
+                <button type="button" data-step="-1" aria-label="Decrease seeker speed">-</button>
+                <output id="startSeekerSpeedValue">3</output>
+                <button type="button" data-step="1" aria-label="Increase seeker speed">+</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="setup-dev-category hidden" aria-label="Developer" hidden>
+            <h2>Developer</h2>
+            <label class="sandbox-toggle">
+              <span>
+                <strong>Sandbox mode</strong>
+                <small>Start with seekers disabled and the editor open.</small>
+              </span>
+              <input id="startSandboxModeInput" type="checkbox" />
+            </label>
+          </section>
+
+          <button id="launchRunButton" class="launch-button" type="button">Enter labyrinth</button>
+        </section>
+
+        <nav class="start-links" aria-label="Project links">
+          <a class="round-link" href="https://github.com/john-thelens/TheSeekerLabyrinth" target="_blank" rel="noreferrer" aria-label="TheSeekerLabyrinth GitHub repository">
+            <img id="githubLogo" class="github-icon" alt="" />
+          </a>
+          <a class="round-link" href="https://github.com/openai/multi-agent-emergence-environments#readme" target="_blank" rel="noreferrer" aria-label="OpenAI hide and seek reference">
+            <img id="startOpenaiLogo" alt="" />
+          </a>
+        </nav>
+      </section>
+
+      <nav class="left-rail" aria-label="Primary controls">
+        <button id="menuButton" class="rail-button" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="menuPanel" title="Menu">
+          <span class="hamburger" aria-hidden="true"></span>
+        </button>
+      </nav>
+
+      <div id="gemPip" aria-live="polite">
+        <span class="diamond-icon" aria-hidden="true"></span>
+        <span id="gemStatus">0 / 8</span>
+      </div>
+
+      <div id="seekerCountdown" class="hidden" aria-live="polite">
+        <span id="seekerCountdownText">Seekers in 4</span>
+      </div>
+
+      <div id="agentPulse" class="agent-pulse hidden" aria-live="polite">
+        <span class="agent-pulse-dot" aria-hidden="true"></span>
+        <span id="agentPulseText">Tracker alert</span>
+      </div>
+      <div id="screenFlash" class="screen-flash hidden" aria-hidden="true"></div>
+
+      <div id="mobileControls" class="mobile-controls" aria-label="Mobile controls">
+        <div id="mobileJoystick" class="mobile-joystick" role="application" aria-label="Move player">
+          <span id="mobileJoystickKnob" class="mobile-joystick-knob" aria-hidden="true"></span>
+        </div>
+        <button id="mobileRunButton" class="mobile-run-button" type="button" aria-label="Run">Run</button>
+      </div>
+
+      <aside class="map-panel" aria-label="Map">
+        <div class="mini-map-card">
+          <canvas id="miniMap" width="220" height="220"></canvas>
+          <button id="expandMapButton" class="map-expand-button hidden" type="button" aria-label="Expand map" title="Expand map">
+            <span aria-hidden="true"></span>
+          </button>
+        </div>
+        <section id="seekerPanel" class="seeker-panel" aria-label="Seeker agents">
+          <div class="seeker-panel-head">
+            <strong>Seeker Agents</strong>
+            <button id="seekerPanelToggle" class="seeker-panel-toggle" type="button" aria-label="Collapse seekers panel" aria-expanded="true" aria-controls="seekerList">-</button>
+          </div>
+          <div id="seekerList" class="seeker-list"></div>
+        </section>
+      </aside>
+
+      <section id="mapEditorPanel" class="map-editor-panel hidden" aria-label="Expanded map">
+        <div class="map-editor-head">
+          <div class="map-title-row">
+            <strong>Map</strong>
+            <span id="mapGemSpawnCount" class="map-stat">Gem spawns: 0</span>
+          </div>
+          <div class="map-editor-actions">
+            <button id="mapEditorModeButton" class="hidden" type="button" hidden>Map editor</button>
+            <button id="closeMapEditorButton" type="button" aria-label="Close expanded map">x</button>
+          </div>
+        </div>
+        <canvas id="expandedMap" width="520" height="520"></canvas>
+        <button id="mapZoomButton" class="map-zoom-button" type="button" aria-label="Hold to enlarge map" title="Hold to enlarge map">
+          <span aria-hidden="true"></span>
+        </button>
+        <div class="map-view-controls hidden" aria-label="Map view controls" hidden>
+          <button id="mapPanButton" type="button">Pan</button>
+          <div class="map-zoom-stepper" aria-label="Map zoom">
+            <button data-map-zoom-step="-5" type="button">-</button>
+            <output id="mapZoomValue">100%</output>
+            <button data-map-zoom-step="5" type="button">+</button>
+          </div>
+        </div>
+        <div class="map-command-bar hidden" aria-label="Map editor commands" hidden>
+          <button id="mapUndoButton" type="button">Undo</button>
+          <button id="mapCopyButton" type="button">Copy</button>
+          <button id="mapPasteButton" type="button">Paste</button>
+          <button id="mapSelectButton" type="button">Select</button>
+        </div>
+        <p id="mapEditorHint">Map view.</p>
+      </section>
+
+      <section id="menuPanel" class="drawer hidden" aria-label="Menu">
+        <div class="runtime-settings-cache" aria-hidden="true">
+          <select id="menuWorldSelect" tabindex="-1"></select>
+          <input id="gemGoalInput" type="hidden" min="3" max="20" value="8" />
+          <output id="gemGoalValue">8</output>
+          <input id="seekerCountInput" type="hidden" min="1" max="30" value="3" />
+          <output id="seekerCountValue">3</output>
+          <input id="seekerSpeedInput" type="hidden" min="1" max="5" value="3" />
+          <output id="seekerSpeedValue">3</output>
+        </div>
+
+        <section class="drawer-section" aria-label="Controller layout">
+          <h2>Controller layout</h2>
+          <div class="control-bind-grid">
+            <button class="control-bind" data-control="up" type="button"><span>Up</span><kbd id="bind-up">W</kbd></button>
+            <button class="control-bind" data-control="down" type="button"><span>Down</span><kbd id="bind-down">S</kbd></button>
+            <button class="control-bind" data-control="left" type="button"><span>Left</span><kbd id="bind-left">A</kbd></button>
+            <button class="control-bind" data-control="right" type="button"><span>Right</span><kbd id="bind-right">D</kbd></button>
+            <button class="control-bind" data-control="run" type="button"><span>Run</span><kbd id="bind-run">Shift</kbd></button>
+          </div>
+          <p class="section-help">Click a control, then press a key to remap it. WASD and arrow keys both move by default.</p>
+          <button id="touchControlsToggle" class="touch-controls-toggle" type="button" aria-pressed="false">
+            <span>
+              <strong>Touch controls</strong>
+              <small>Spawn joystick and run button.</small>
+            </span>
+            <b>Show</b>
+          </button>
+        </section>
+
+        <section class="drawer-section developer-section hidden" aria-label="Developer" hidden>
+          <h2>Developer</h2>
+          <div class="button-row dev-tools">
+            <button id="editorToggle" type="button">Level editor</button>
+            <button id="saveLayoutButton" type="button">Save layout</button>
+          </div>
+        </section>
+
+        <div class="button-row drawer-footer-actions">
+          <button id="backToStartButton" type="button">Back to menu</button>
+          <button id="resumeMenuButton" class="resume-menu-button" type="button">Resume</button>
+        </div>
+      </section>
+
+      <section id="editorToolbar" class="editor-toolbar hidden" aria-label="Editor tools">
+        <div class="toolbar-head">
+          <span class="drag-handle" aria-hidden="true"></span>
+          <strong>Editor tools</strong>
+          <button id="closeEditor" class="toolbar-close" type="button" aria-label="Close editor">x</button>
+        </div>
+        <div class="tool-grid" role="toolbar" aria-label="Editor brush tools">
+          <button data-tool="floor" type="button">Floor</button>
+          <button data-tool="erase" type="button">Erase</button>
+          <button data-tool="block" class="active" type="button">Block</button>
+          <button data-tool="stairs" type="button">Stairs</button>
+          <button data-tool="box" type="button">Box</button>
+          <button data-tool="gem" type="button">Gem spawn</button>
+          <button data-tool="entry" type="button">Entry</button>
+        </div>
+        <div id="blockModeControls" class="block-mode-controls" aria-label="Block height controls">
+          <span>Block</span>
+          <div class="block-mode-segmented">
+            <button data-block-mode="add" class="active" type="button">Add</button>
+            <button data-block-mode="remove" type="button">Remove</button>
+          </div>
+        </div>
+        <div id="floorZoneControls" class="floor-zone-controls hidden" aria-label="Floor color controls">
+          <span>Floor color</span>
+          <div class="floor-zone-grid">
+            <button data-floor-zone="atrium" class="active" type="button"><span class="floor-swatch floor-swatch-white"></span>White</button>
+            <button data-floor-zone="garden" type="button"><span class="floor-swatch floor-swatch-green"></span>Green</button>
+            <button data-floor-zone="rose" type="button"><span class="floor-swatch floor-swatch-red"></span>Red</button>
+            <button data-floor-zone="dock" type="button"><span class="floor-swatch floor-swatch-blue"></span>Blue</button>
+            <button data-floor-zone="signal" type="button"><span class="floor-swatch floor-swatch-orange"></span>Orange</button>
+            <button data-floor-zone="archive" type="button"><span class="floor-swatch floor-swatch-purple"></span>Purple</button>
+          </div>
+        </div>
+        <div class="model-browser" aria-label="Model browser">
+          <div class="model-browser-head">
+            <strong>Models</strong>
+            <div id="modelPageTabs" class="model-page-tabs" role="tablist" aria-label="Model pages"></div>
+          </div>
+          <div id="modelTable" class="model-table" aria-label="Placeable models"></div>
+        </div>
+        <div class="toolbar-actions">
+          <button id="rotateToolButton" type="button">Rotate object</button>
+          <button id="editorSaveButton" type="button">Save layout</button>
+        </div>
+        <p id="toolHint">Block: use Add or Remove, then click or drag tiles. Blocks stack up to height 10.</p>
+      </section>
+
+      <div id="pauseOverlay" class="pause-overlay hidden" aria-live="polite">
+        <span id="pauseOverlayText">Paused.</span>
+      </div>
+
+      <div id="toast" class="toast hidden"></div>
+
+      <section id="roundPanel" class="round-panel hidden" aria-live="polite">
+        <h2 id="roundTitle">Level Cleared</h2>
+        <p id="roundText">All gems collected.</p>
+        <div id="roundScore" class="round-score hidden"></div>
+        <button id="playAgainButton" type="button">Play again</button>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
