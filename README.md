@@ -4,7 +4,7 @@ Made for **OpenAI DEV CHALLENGE: MAKE A GAME WE CAN PLAY**.
 
 TheSeekerLabyrinth is an isometric browser game where the player collects gems, avoids coordinated seeker agents, and escapes through a gate after every gem is found.
 
-Vercel link: **coming soon**.
+Vercel link: https://the-seeker-labyrinth.vercel.app/
 
 ## Play Locally
 
