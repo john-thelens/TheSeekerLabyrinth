@@ -136,6 +136,7 @@ const STORAGE_KEY = 'seeker_labyrinth_three_layout_v1';
 const CONTROL_STORAGE_KEY = 'seeker_labyrinth_controls_v1';
 const TOUCH_CONTROLS_STORAGE_KEY = 'seeker_labyrinth_touch_controls_v1';
 const EDITOR_POSITION_STORAGE_KEY = 'seeker_labyrinth_editor_toolbar_position_v1';
+const AI_SETTINGS_STORAGE_KEY = 'seeker_labyrinth_optional_ai_v1';
 // Keep false for public builds; flip locally when reshaping the shipped map.
 const DEVELOPER_TOOLS_ENABLED = false;
 const CONTROL_DEFS = {
@@ -195,6 +196,17 @@ const mapGemSpawnCount = document.querySelector('#mapGemSpawnCount');
 const menuButton = document.querySelector('#menuButton');
 const menuPanel = document.querySelector('#menuPanel');
 const closeMenu = document.querySelector('#closeMenu');
+const aiButton = document.querySelector('#aiButton');
+const aiRailLogo = document.querySelector('#aiRailLogo');
+const aiPanel = document.querySelector('#aiPanel');
+const closeAiPanelButton = document.querySelector('#closeAiPanel');
+const aiProvider = document.querySelector('#aiProvider');
+const aiEndpoint = document.querySelector('#aiEndpoint');
+const aiKey = document.querySelector('#aiKey');
+const aiStatus = document.querySelector('#aiStatus');
+const saveAiSettingsButton = document.querySelector('#saveAiSettings');
+const clearAiSettingsButton = document.querySelector('#clearAiSettings');
+const playerViewButton = document.querySelector('#playerViewButton');
 const developerSection = document.querySelector('.developer-section');
 const editorToolbar = document.querySelector('#editorToolbar');
 const editorToggle = document.querySelector('#editorToggle');
@@ -246,6 +258,7 @@ const floorZoneButtons = [...document.querySelectorAll('[data-floor-zone]')];
 
 startOpenaiLogo.src = openAiLogoUrl;
 githubLogo.src = githubIconUrl;
+if (aiRailLogo) aiRailLogo.src = openAiLogoUrl;
 
 let controlBindings = loadControlBindings();
 let pendingControl = null;
@@ -263,6 +276,7 @@ scene.background = new THREE.Color(0x000205);
 
 const camera = new THREE.OrthographicCamera(-12, 12, 8, -8, 0.1, 200);
 const cameraOffset = new THREE.Vector3(14, 14, 14);
+const cameraPlayerViewOffset = new THREE.Vector3(8.2, 6.4, 8.2);
 const cameraFocus = new THREE.Vector3();
 const cameraTarget = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
@@ -679,6 +693,8 @@ const state = {
   seekerPanelSignature: '',
   seekerPanelAutoCollapsed: false,
   menuPausedGame: false,
+  aiPausedGame: false,
+  playerViewMode: false,
   buildSerial: 0,
   toastTimer: 0,
   pauseOverlayTimer: 0,
@@ -938,6 +954,58 @@ function setToast(message, options = {}) {
   toast.classList.toggle('urgent', Boolean(options.urgent));
   toast.classList.remove('hidden');
   state.toastTimer = options.duration ?? 2.2;
+}
+
+function readAiSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AI_SETTINGS_STORAGE_KEY) || 'null');
+    return {
+      provider: saved?.provider === 'openai' ? 'openai' : 'openai-compatible',
+      endpoint: typeof saved?.endpoint === 'string' ? saved.endpoint : '',
+      key: typeof saved?.key === 'string' ? saved.key : ''
+    };
+  } catch {
+    return { provider: 'openai-compatible', endpoint: '', key: '' };
+  }
+}
+
+function syncAiPanel() {
+  if (!aiPanel) return;
+  const settings = readAiSettings();
+  if (aiProvider) aiProvider.value = settings.provider;
+  if (aiEndpoint) aiEndpoint.value = settings.endpoint;
+  if (aiKey) aiKey.value = '';
+  if (aiStatus) {
+    aiStatus.textContent = settings.key
+      ? 'Optional AI key saved in this browser. The game still works without it.'
+      : 'Local seeker agents active. No AI key connected.';
+  }
+}
+
+function saveAiSettings() {
+  const existing = readAiSettings();
+  const next = {
+    provider: aiProvider?.value === 'openai' ? 'openai' : 'openai-compatible',
+    endpoint: aiEndpoint?.value?.trim() || '',
+    key: aiKey?.value?.trim() || existing.key || ''
+  };
+  try {
+    localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(next));
+    syncAiPanel();
+    setToast('Optional AI settings saved locally.');
+  } catch {
+    setToast('Could not save AI settings in this browser.', { urgent: true });
+  }
+}
+
+function clearAiSettings() {
+  try {
+    localStorage.removeItem(AI_SETTINGS_STORAGE_KEY);
+  } catch {
+    // Nothing else to do; the UI will still reset.
+  }
+  syncAiPanel();
+  setToast('Optional AI settings cleared.');
 }
 
 function showPauseOverlay(message, { persist = false } = {}) {
@@ -2771,6 +2839,7 @@ function returnToStart() {
   startScreen.classList.remove('setup-open');
   startSetup.classList.add('hidden');
   closeMenuPanel({ resume: false, notify: false });
+  closeAiPanel({ resume: false, notify: false });
   roundPanel.classList.add('hidden');
   toggleEditor(false);
   hidePauseOverlay();
@@ -2779,6 +2848,7 @@ function returnToStart() {
 
 function openMenuPanel() {
   if (!menuPanel.classList.contains('hidden')) return;
+  closeAiPanel({ resume: false, notify: false });
   syncDeveloperSection();
   menuPanel.classList.remove('hidden');
   menuButton.setAttribute('aria-expanded', 'true');
@@ -2823,6 +2893,52 @@ function resumeFromMenu() {
 function toggleMenuPanel() {
   if (menuPanel.classList.contains('hidden')) openMenuPanel();
   else closeMenuPanel();
+}
+
+function openAiPanel() {
+  if (!aiPanel || !aiPanel.classList.contains('hidden')) return;
+  closeMenuPanel({ resume: false, notify: false });
+  syncAiPanel();
+  aiPanel.classList.remove('hidden');
+  aiButton?.setAttribute('aria-expanded', 'true');
+  if (state.started && state.round === 'playing') {
+    state.round = 'paused';
+    state.aiPausedGame = true;
+    showPauseOverlay('Paused.', { persist: true });
+  }
+  syncMobileControls();
+}
+
+function closeAiPanel(options = {}) {
+  const { resume = true, notify = true } = options;
+  if (!aiPanel || aiPanel.classList.contains('hidden')) {
+    state.aiPausedGame = false;
+    return;
+  }
+  aiPanel.classList.add('hidden');
+  aiButton?.setAttribute('aria-expanded', 'false');
+  if (resume && state.aiPausedGame && state.started && state.round === 'paused') {
+    state.round = 'playing';
+    if (notify) showPauseOverlay('Resumed.');
+    else hidePauseOverlay();
+  }
+  state.aiPausedGame = false;
+  syncMobileControls();
+}
+
+function toggleAiPanel() {
+  if (!aiPanel) return;
+  if (aiPanel.classList.contains('hidden')) openAiPanel();
+  else closeAiPanel();
+}
+
+function setPlayerViewMode(force = !state.playerViewMode) {
+  state.playerViewMode = Boolean(force);
+  playerViewButton?.classList.toggle('active', state.playerViewMode);
+  playerViewButton?.setAttribute('aria-pressed', String(state.playerViewMode));
+  updateCameraProjection();
+  updateCamera(true);
+  setToast(state.playerViewMode ? 'Player view on.' : 'Map view on.', { duration: 1.2 });
 }
 
 function syncDeveloperSection() {
@@ -5798,7 +5914,7 @@ function updateCamera(immediate = false, delta = 1 / 60) {
   else if (p) cameraTarget.set(p.x, 0, p.z);
   if (immediate) cameraFocus.copy(cameraTarget);
   else cameraFocus.lerp(cameraTarget, 1 - Math.exp(-delta * 8));
-  camera.position.copy(cameraFocus).add(cameraOffset);
+  camera.position.copy(cameraFocus).add(state.playerViewMode ? cameraPlayerViewOffset : cameraOffset);
   camera.lookAt(cameraFocus);
 }
 
@@ -5843,7 +5959,8 @@ function updateCameraProjection() {
   const aspect = window.innerWidth / window.innerHeight;
   const shortLandscape = window.matchMedia('(orientation: landscape) and (max-height: 560px)').matches;
   const compactTouch = window.matchMedia('(max-width: 760px), (hover: none), (pointer: coarse)').matches;
-  const view = shortLandscape ? 7 : (compactTouch ? 10.4 : 12);
+  const baseView = shortLandscape ? 7 : (compactTouch ? 10.4 : 12);
+  const view = state.playerViewMode ? baseView * 0.58 : baseView;
   camera.left = -view * aspect;
   camera.right = view * aspect;
   camera.top = view;
@@ -6000,12 +6117,14 @@ function bindEvents() {
     keys.add(event.code);
     if (event.repeat) {
       if (event.code === 'Escape') {
+        closeAiPanel();
         closeMenuPanel();
         if (state.editorOpen) toggleEditor(false);
       }
       return;
     }
     if (event.code === 'Escape') {
+      closeAiPanel();
       closeMenuPanel();
       if (state.editorOpen) toggleEditor(false);
     }
@@ -6025,6 +6144,11 @@ function bindEvents() {
   canvas.addEventListener('lostpointercapture', endEditorPaint);
 
   menuButton.addEventListener('click', toggleMenuPanel);
+  aiButton?.addEventListener('click', toggleAiPanel);
+  closeAiPanelButton?.addEventListener('click', () => closeAiPanel());
+  saveAiSettingsButton?.addEventListener('click', saveAiSettings);
+  clearAiSettingsButton?.addEventListener('click', clearAiSettings);
+  playerViewButton?.addEventListener('click', () => setPlayerViewMode());
   seekerPanelToggle?.addEventListener('click', () => setSeekerPanelCollapsed());
   closeMenu?.addEventListener('click', () => closeMenuPanel());
   controlBindButtons.forEach((button) => {

@@ -90,7 +90,49 @@
         <button id="menuButton" class="rail-button" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="menuPanel" title="Menu">
           <span class="hamburger" aria-hidden="true"></span>
         </button>
+        <button id="aiButton" class="rail-button ai-rail-button" type="button" aria-label="Open optional AI settings" aria-expanded="false" aria-controls="aiPanel" title="Optional AI">
+          <img id="aiRailLogo" alt="" />
+        </button>
       </nav>
+
+      <button id="playerViewButton" class="player-view-button" type="button" aria-label="Toggle player view" aria-pressed="false" title="Player view">
+        <span class="pegman-icon" aria-hidden="true"></span>
+      </button>
+
+      <section id="aiPanel" class="ai-panel hidden" aria-label="Optional AI settings">
+        <div class="ai-panel-head">
+          <div>
+            <p class="eyebrow">Optional</p>
+            <h2>AI Agent Brain</h2>
+          </div>
+          <button id="closeAiPanel" type="button">Close</button>
+        </div>
+        <div class="ai-callout">
+          <strong>No API key is needed to play.</strong>
+          <span>The seeker agents already run locally. Add a key only when you want optional AI narration, strategy notes, or a future realtime companion.</span>
+        </div>
+        <p id="aiStatus" class="ai-status">Local seeker agents active. No AI key connected.</p>
+        <label class="ai-field">
+          <span>Provider</span>
+          <select id="aiProvider">
+            <option value="openai">OpenAI API</option>
+            <option value="openai-compatible">OpenAI-compatible / Poe API</option>
+          </select>
+        </label>
+        <label class="ai-field">
+          <span>Endpoint</span>
+          <input id="aiEndpoint" type="url" autocomplete="off" placeholder="Optional, for OpenAI-compatible routes" />
+        </label>
+        <label class="ai-field">
+          <span>API key</span>
+          <input id="aiKey" type="password" autocomplete="off" placeholder="Leave blank until the AI feature is enabled" />
+        </label>
+        <div class="ai-actions">
+          <button id="saveAiSettings" type="button">Save locally</button>
+          <button id="clearAiSettings" type="button">Clear</button>
+        </div>
+        <p class="ai-footnote">When to add the key: after we add the server or Vercel API route that calls OpenAI/Poe. For public deploys, keep real keys in environment variables, not in game code.</p>
+      </section>
 
       <div id="gemPip" aria-live="polite">
         <span class="diamond-icon" aria-hidden="true"></span>
