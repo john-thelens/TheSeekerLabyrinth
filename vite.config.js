@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RECOMMENDED_MODEL, chooseAgentAction } from './server/agentBrain.js';
 
 const workspaceRoot = path.dirname(fileURLToPath(import.meta.url));
 
@@ -85,7 +86,7 @@ function companionPlugin() {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
+              model: process.env.OPENAI_MODEL || RECOMMENDED_MODEL,
               max_output_tokens: 90,
               input: [
                 {
@@ -117,6 +118,25 @@ function companionPlugin() {
         } catch (error) {
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ text: pickHint(), source: 'local', error: error.message }));
+        }
+      });
+
+      server.middlewares.use('/api/agent-brain', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        try {
+          const body = await readBody(req);
+          const action = await chooseAgentAction(body, process.env);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(action));
+        } catch {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ action: 'ease_game', message: 'Rover fallback engaged.' }));
         }
       });
     }

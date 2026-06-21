@@ -1,6 +1,9 @@
 import gemCollectUrl from './assets/audio/gem-collect.wav?url';
 import caughtUrl from './assets/audio/caught.mp3?url';
 import stepUrl from './assets/audio/step.wav?url';
+import backgroundUrl from './assets/audio/silence.wav?url';
+
+const BACKGROUND_LOOP_GAIN = 0.72;
 
 function rampParam(param, value, context, duration = 0.22) {
   param.cancelScheduledValues(context.currentTime);
@@ -20,6 +23,10 @@ export class AmbientSoundscape {
     this.caughtBufferPromise = null;
     this.stepBuffer = null;
     this.stepBufferPromise = null;
+    this.backgroundBuffer = null;
+    this.backgroundBufferPromise = null;
+    this.backgroundSource = null;
+    this.backgroundGain = null;
     this.runLoopSource = null;
     this.runLoopGain = null;
     this.runLoopEndsAt = 0;
@@ -32,6 +39,7 @@ export class AmbientSoundscape {
     void this.loadGemBuffer();
     void this.loadCaughtBuffer();
     void this.loadStepBuffer();
+    void this.loadBackgroundBuffer();
   }
 
   createGraph() {
@@ -75,7 +83,10 @@ export class AmbientSoundscape {
 
   setMuted(muted) {
     this.muted = muted;
-    if (muted) this.stopRunLoop(0.04);
+    if (muted) {
+      this.stopRunLoop(0.04);
+      this.stopBackgroundLoop(0.08);
+    }
     if (!this.context || !this.master) return;
     rampParam(this.master.gain, muted ? 0 : 0.18, this.context, 0.18);
     if (this.sfx) rampParam(this.sfx.gain, muted ? 0 : 0.82, this.context, 0.18);
@@ -103,6 +114,10 @@ export class AmbientSoundscape {
 
   loadStepBuffer() {
     return this.loadAudioBuffer(stepUrl, 'stepBuffer', 'stepBufferPromise');
+  }
+
+  loadBackgroundBuffer() {
+    return this.loadAudioBuffer(backgroundUrl, 'backgroundBuffer', 'backgroundBufferPromise');
   }
 
   loadAudioBuffer(url, bufferKey, promiseKey) {
@@ -241,5 +256,58 @@ export class AmbientSoundscape {
     this.runLoopSource = null;
     this.runLoopGain = null;
     this.runLoopEndsAt = 0;
+  }
+
+  setGameplayLoop(active) {
+    if (!this.context || this.muted) {
+      this.stopBackgroundLoop();
+      return;
+    }
+    if (!active) {
+      this.stopBackgroundLoop();
+      return;
+    }
+    if (this.backgroundSource) return;
+    if (!this.backgroundBuffer) {
+      void this.loadBackgroundBuffer();
+      return;
+    }
+
+    const now = this.context.currentTime;
+    const source = this.context.createBufferSource();
+    const gain = this.context.createGain();
+    source.buffer = this.backgroundBuffer;
+    source.loop = true;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(BACKGROUND_LOOP_GAIN, now + 0.45);
+    source.connect(gain).connect(this.master);
+    source.start(now);
+    this.backgroundSource = source;
+    this.backgroundGain = gain;
+    source.onended = () => {
+      if (this.backgroundSource === source) {
+        this.backgroundSource = null;
+        this.backgroundGain = null;
+      }
+    };
+  }
+
+  stopBackgroundLoop(fade = 0.18) {
+    if (!this.context || !this.backgroundSource) return;
+    const source = this.backgroundSource;
+    const gain = this.backgroundGain;
+    const now = this.context.currentTime;
+    if (gain && fade > 0) {
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      gain.gain.linearRampToValueAtTime(0.0001, now + fade);
+    }
+    try {
+      source.stop(now + fade);
+    } catch {
+      // A scheduled source can already be stopped by browser audio cleanup.
+    }
+    this.backgroundSource = null;
+    this.backgroundGain = null;
   }
 }

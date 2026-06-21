@@ -95,8 +95,9 @@
         </button>
       </nav>
 
-      <button id="playerViewButton" class="player-view-button" type="button" aria-label="Toggle street view" aria-pressed="false" title="Street view">
+      <button id="playerViewButton" class="player-view-button" type="button" aria-label="Open Street View" aria-pressed="false" title="Open Street View">
         <span class="pegman-icon" aria-hidden="true"></span>
+        <span id="playerViewLabel" class="player-view-label">Open Street View</span>
       </button>
 
       <section id="aiPanel" class="ai-panel hidden" aria-label="Optional AI settings">
@@ -109,7 +110,7 @@
         </div>
         <div class="ai-callout">
           <strong>No API key is needed to play.</strong>
-          <span>The seeker agents already run locally. Add a key only when you want optional AI narration, strategy notes, or a future realtime companion.</span>
+          <span>The seeker agents already run locally. Add a key only when you want the optional rover companion to read commands and use bounded game tools.</span>
         </div>
         <p id="aiStatus" class="ai-status">Local seeker agents active. No AI key connected.</p>
         <label class="ai-field">
@@ -135,7 +136,22 @@
           <button id="saveAiSettings" type="button">Save locally</button>
           <button id="clearAiSettings" type="button">Clear</button>
         </div>
-        <p class="ai-footnote">When to add the key: after we add the server or Vercel API route that calls the AI provider. For public deploys, keep real keys in environment variables, not in game code.</p>
+        <section id="aiCompanionBox" class="ai-companion-box unavailable" aria-label="AI rover companion">
+          <div class="ai-companion-head">
+            <div>
+              <strong>Rover companion</strong>
+              <span id="aiCompanionState">Save an API key to spawn the rover.</span>
+            </div>
+          </div>
+          <div id="aiCompanionLog" class="ai-companion-log" aria-live="polite">
+            <p>Try: "slow down the seekers", "make this harder", "stun nearby seekers", or "make this easier".</p>
+          </div>
+          <form id="aiCommandForm" class="ai-command-form">
+            <input id="aiCommandInput" type="text" autocomplete="off" placeholder="Ask the rover for help..." />
+            <button id="aiCommandButton" type="submit">Send</button>
+          </form>
+        </section>
+        <p class="ai-footnote">When to add the key: only if you want the optional rover companion. The game and seeker agents run locally without it.</p>
       </section>
 
       <div id="gemPip" aria-live="polite">

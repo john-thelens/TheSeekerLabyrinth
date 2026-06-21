@@ -32,6 +32,7 @@ The production build is written to `dist/` and can be hosted as a static site.
 Collect all gems before the seekers catch you. Once every gem is collected, the seekers learn your exact location and the escape gate activates. Reach the gate to clear the level.
 
 The final score considers run time, gems collected, trap avoidance, seeker sightings, all-gem streaks, and escape performance.
+Optional rover-assisted actions can also adjust the score, so using help or raising the pressure is reflected in the final breakdown.
 
 ## Controls
 
@@ -51,6 +52,7 @@ Controls can be remapped in game. Touch controls for mobile users can also be en
 - Night-time atmosphere with seeker flashlight vision
 - Difficulty settings for gem count, seeker count, and seeker speed
 - Scoring screen with bonuses and rank
+- Optional AI rover companion that can be enabled with an API key, while normal play remains fully local
 
 ## OpenAI Inspiration
 

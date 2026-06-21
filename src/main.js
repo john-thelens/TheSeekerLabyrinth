@@ -98,6 +98,9 @@ const PLAYER_RUN_STEER_RESPONSE = 14;
 const PLAYER_STOP_RESPONSE = 20;
 const PLAYER_TURN_RESPONSE = 20;
 const PLAYER_EPSILON = 0.018;
+const STREET_VIEW_TURN_SPEED = 2.55;
+const STREET_VIEW_MOVE_MULTIPLIER = 0.76;
+const STREET_VIEW_REVERSE_MULTIPLIER = 0.66;
 const PLAYER_DUST_INTERVAL = 0.032;
 const SEEKER_BASE_SPEED = 0.58;
 const SEEKER_VISION_RANGE = CELL * 3.6;
@@ -139,6 +142,15 @@ const CONTROL_STORAGE_KEY = 'seeker_labyrinth_controls_v1';
 const TOUCH_CONTROLS_STORAGE_KEY = 'seeker_labyrinth_touch_controls_v1';
 const EDITOR_POSITION_STORAGE_KEY = 'seeker_labyrinth_editor_toolbar_position_v1';
 const AI_SETTINGS_STORAGE_KEY = 'seeker_labyrinth_optional_ai_v1';
+const AI_RECOMMENDED_MODEL = 'gpt-5.4-nano';
+const AI_TOOL_SCORE = {
+  slow_seekers: -300,
+  stun_seekers: -450,
+  ease_game: -260,
+  ramp_difficulty: 520,
+  focus_seekers: 420,
+  reveal_hint: -160
+};
 // Keep false for public builds; flip locally when reshaping the shipped map.
 const DEVELOPER_TOOLS_ENABLED = false;
 const CONTROL_DEFS = {
@@ -209,7 +221,14 @@ const aiKey = document.querySelector('#aiKey');
 const aiStatus = document.querySelector('#aiStatus');
 const saveAiSettingsButton = document.querySelector('#saveAiSettings');
 const clearAiSettingsButton = document.querySelector('#clearAiSettings');
+const aiCompanionBox = document.querySelector('#aiCompanionBox');
+const aiCompanionState = document.querySelector('#aiCompanionState');
+const aiCompanionLog = document.querySelector('#aiCompanionLog');
+const aiCommandForm = document.querySelector('#aiCommandForm');
+const aiCommandInput = document.querySelector('#aiCommandInput');
+const aiCommandButton = document.querySelector('#aiCommandButton');
 const playerViewButton = document.querySelector('#playerViewButton');
+const playerViewLabel = document.querySelector('#playerViewLabel');
 const developerSection = document.querySelector('.developer-section');
 const editorToolbar = document.querySelector('#editorToolbar');
 const editorToggle = document.querySelector('#editorToggle');
@@ -412,6 +431,11 @@ const materials = {
   escapeShip: new THREE.MeshToonMaterial({ color: 0xe4ebef }),
   escapeShipDark: new THREE.MeshToonMaterial({ color: 0x56616e }),
   escapeShipCanopy: new THREE.MeshBasicMaterial({ color: 0x78d9ff, transparent: true, opacity: 0.82 }),
+  aiRoverBody: new THREE.MeshToonMaterial({ color: 0x6f7680 }),
+  aiRoverDark: new THREE.MeshToonMaterial({ color: 0x262b31 }),
+  aiRoverLight: new THREE.MeshBasicMaterial({ color: 0x7fdcff, transparent: true, opacity: 0.86 }),
+  aiRoverGlow: new THREE.MeshBasicMaterial({ color: 0x55d8ff, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }),
+  aiShock: new THREE.MeshBasicMaterial({ color: 0x79ecff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }),
   tracker: new THREE.MeshBasicMaterial({ color: 0xff1e1e, transparent: true, opacity: 0.82, depthWrite: false }),
   trackerGlow: new THREE.MeshBasicMaterial({ color: 0xff3d38, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide })
 };
@@ -582,6 +606,10 @@ const trackerGlowGeometry = new THREE.RingGeometry(0.34, 0.72, 32);
 const escapePadGeometry = new THREE.TorusGeometry(0.82, 0.075, 10, 36);
 const escapeGlowGeometry = new THREE.RingGeometry(0.48, 1.22, 40);
 const escapeBeamGeometry = new THREE.ConeGeometry(0.86, 3.8, 32, 1, true);
+const aiRoverBodyGeometry = new THREE.CylinderGeometry(0.48, 0.58, 0.22, 28);
+const aiRoverDomeGeometry = new THREE.SphereGeometry(0.34, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+const aiRoverGlowGeometry = new THREE.RingGeometry(0.44, 0.82, 36);
+const aiShockGeometry = new THREE.RingGeometry(0.68, 0.76, 48);
 const sphereGeometry = new THREE.SphereGeometry(0.26, 18, 14);
 const smallSphereGeometry = new THREE.SphereGeometry(0.1, 12, 8);
 const cylinderGeometry = new THREE.CylinderGeometry(0.16, 0.16, 1, 16);
@@ -701,6 +729,16 @@ const state = {
   menuPausedGame: false,
   aiPausedGame: false,
   playerViewMode: false,
+  aiCompanionEnabled: false,
+  aiCompanionGroup: null,
+  aiCompanionBusy: false,
+  aiCompanionMessages: [],
+  aiSeekerSlowTimer: 0,
+  aiSeekerSlowMultiplier: 1,
+  aiSeekerStunTimer: 0,
+  aiDifficultyTimer: 0,
+  aiDifficultyMultiplier: 1,
+  aiShockwaves: [],
   buildSerial: 0,
   toastTimer: 0,
   pauseOverlayTimer: 0,
@@ -968,11 +1006,48 @@ function readAiSettings() {
     return {
       provider: saved?.provider === 'openai-compatible' ? 'openai-compatible' : 'openai',
       endpoint: typeof saved?.endpoint === 'string' ? saved.endpoint : '',
-      key: typeof saved?.key === 'string' ? saved.key : ''
+      key: typeof saved?.key === 'string' ? saved.key : '',
+      model: typeof saved?.model === 'string' && saved.model.trim() ? saved.model.trim() : AI_RECOMMENDED_MODEL
     };
   } catch {
-    return { provider: 'openai', endpoint: '', key: '' };
+    return { provider: 'openai', endpoint: '', key: '', model: AI_RECOMMENDED_MODEL };
   }
+}
+
+function aiHasKey() {
+  return Boolean(readAiSettings().key);
+}
+
+function renderAiCompanionLog() {
+  if (!aiCompanionLog) return;
+  const messages = state.aiCompanionMessages.slice(-4);
+  const fallback = 'Try: "slow down the seekers", "make this harder", "stun nearby seekers", or "make this easier".';
+  aiCompanionLog.innerHTML = messages.length
+    ? messages.map((message) => `<p>${escapeHtml(message)}</p>`).join('')
+    : `<p>${fallback}</p>`;
+  aiCompanionLog.scrollTop = aiCompanionLog.scrollHeight;
+}
+
+function addAiCompanionMessage(message) {
+  state.aiCompanionMessages.push(message);
+  if (state.aiCompanionMessages.length > 12) state.aiCompanionMessages.splice(0, state.aiCompanionMessages.length - 12);
+  renderAiCompanionLog();
+}
+
+function syncAiCompanionAvailability() {
+  const available = aiHasKey();
+  state.aiCompanionEnabled = available;
+  aiCompanionBox?.classList.toggle('unavailable', !available);
+  if (aiCompanionState) {
+    aiCompanionState.textContent = available
+      ? 'Rover online. It follows you and can use bounded game tools.'
+      : 'Save an API key to spawn the rover.';
+  }
+  if (aiCommandInput) aiCommandInput.disabled = !available || state.aiCompanionBusy;
+  if (aiCommandButton) aiCommandButton.disabled = !available || state.aiCompanionBusy;
+  if (available) ensureAiCompanion();
+  else removeAiCompanion();
+  renderAiCompanionLog();
 }
 
 function syncAiPanel() {
@@ -980,12 +1055,14 @@ function syncAiPanel() {
   const settings = readAiSettings();
   if (aiProvider) aiProvider.value = settings.provider;
   if (aiEndpoint) aiEndpoint.value = settings.endpoint;
+  if (aiModel) aiModel.value = `${settings.model} (recommended)`;
   if (aiKey) aiKey.value = '';
   if (aiStatus) {
     aiStatus.textContent = settings.key
-      ? 'Optional AI key saved in this browser. The game still works without it.'
+      ? 'Optional AI key saved in this browser. Rover companion available.'
       : 'Local seeker agents active. No AI key connected.';
   }
+  syncAiCompanionAvailability();
 }
 
 function saveAiSettings() {
@@ -993,12 +1070,13 @@ function saveAiSettings() {
   const next = {
     provider: aiProvider?.value === 'openai-compatible' ? 'openai-compatible' : 'openai',
     endpoint: aiEndpoint?.value?.trim() || '',
-    key: aiKey?.value?.trim() || existing.key || ''
+    key: aiKey?.value?.trim() || existing.key || '',
+    model: existing.model || AI_RECOMMENDED_MODEL
   };
   try {
     localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(next));
     syncAiPanel();
-    setToast('Optional AI settings saved locally.');
+    setToast(next.key ? 'Rover companion online.' : 'Optional AI settings saved locally.');
   } catch {
     setToast('Could not save AI settings in this browser.', { urgent: true });
   }
@@ -2437,6 +2515,126 @@ function makeSeekerCharacter() {
   return group;
 }
 
+function makeAiCompanionRover() {
+  const group = new THREE.Group();
+  group.userData.aiCompanion = true;
+
+  const glow = new THREE.Mesh(aiRoverGlowGeometry, materials.aiRoverGlow.clone());
+  glow.rotation.x = Math.PI / 2;
+  glow.position.y = 0.055;
+  glow.renderOrder = 2;
+  glow.userData.roverGlow = true;
+  group.add(glow);
+
+  const body = new THREE.Mesh(aiRoverBodyGeometry, materials.aiRoverBody);
+  body.position.y = 0.28;
+  body.scale.set(1.14, 1, 0.82);
+  createLineBox(body, edgeMaterial);
+  group.add(body);
+
+  const base = new THREE.Mesh(aiRoverBodyGeometry, materials.aiRoverDark);
+  base.position.y = 0.16;
+  base.scale.set(1.02, 0.42, 0.76);
+  createLineBox(base, softEdgeMaterial);
+  group.add(base);
+
+  const dome = new THREE.Mesh(aiRoverDomeGeometry, materials.aiRoverLight.clone());
+  dome.position.y = 0.42;
+  dome.scale.set(0.92, 0.45, 0.92);
+  createLineBox(dome, softEdgeMaterial);
+  group.add(dome);
+
+  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.42, 8), materials.aiRoverDark);
+  antenna.position.set(0.26, 0.76, 0);
+  antenna.rotation.z = -0.16;
+  group.add(antenna);
+
+  const tip = new THREE.Mesh(smallSphereGeometry, materials.aiRoverLight.clone());
+  tip.position.set(0.3, 0.98, 0);
+  tip.scale.setScalar(0.7);
+  group.add(tip);
+
+  group.scale.setScalar(0.92);
+  return group;
+}
+
+function ensureAiCompanion() {
+  if (!state.aiCompanionEnabled || !state.player?.group) return;
+  if (!state.aiCompanionGroup) state.aiCompanionGroup = makeAiCompanionRover();
+  if (!state.aiCompanionGroup.parent) dynamic.add(state.aiCompanionGroup);
+  if (!state.aiCompanionGroup.userData.initialized) {
+    const p = state.player.group.position;
+    state.aiCompanionGroup.position.set(p.x - CELL * 0.62, p.y + 0.08, p.z + CELL * 0.46);
+    state.aiCompanionGroup.userData.initialized = true;
+  }
+}
+
+function removeAiCompanion() {
+  if (state.aiCompanionGroup?.parent) state.aiCompanionGroup.parent.remove(state.aiCompanionGroup);
+}
+
+function addAiShockwave(origin = state.aiCompanionGroup?.position) {
+  if (!origin) return;
+  const ring = new THREE.Mesh(aiShockGeometry, materials.aiShock.clone());
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(origin.x, origin.y + 0.08, origin.z);
+  ring.renderOrder = 6;
+  ring.userData.aiShock = { age: 0, life: 0.78 };
+  dynamic.add(ring);
+  state.aiShockwaves.push(ring);
+}
+
+function updateAiCompanion(delta) {
+  state.aiSeekerSlowTimer = Math.max(0, state.aiSeekerSlowTimer - delta);
+  state.aiSeekerStunTimer = Math.max(0, state.aiSeekerStunTimer - delta);
+  state.aiDifficultyTimer = Math.max(0, state.aiDifficultyTimer - delta);
+  if (state.aiSeekerSlowTimer <= 0) state.aiSeekerSlowMultiplier = 1;
+  if (state.aiDifficultyTimer <= 0) state.aiDifficultyMultiplier = 1;
+
+  if (!state.aiCompanionEnabled) return;
+  ensureAiCompanion();
+  if (!state.aiCompanionGroup?.parent || !state.player?.group) return;
+  const velocity = state.playerVelocity;
+  const speed = Math.hypot(velocity.x, velocity.z);
+  const nx = speed > 0.1 ? velocity.x / speed : Math.sin(state.player.group.rotation.y);
+  const nz = speed > 0.1 ? velocity.z / speed : Math.cos(state.player.group.rotation.y);
+  const side = 0.46;
+  const target = new THREE.Vector3(
+    state.player.group.position.x - nx * CELL * 0.58 - nz * side,
+    state.player.group.position.y + 0.08 + Math.sin(clock.elapsedTime * 4.4) * 0.035,
+    state.player.group.position.z - nz * CELL * 0.58 + nx * side
+  );
+  state.aiCompanionGroup.position.lerp(target, 1 - Math.exp(-7.5 * delta));
+  state.aiCompanionGroup.rotation.y = lerpAngle(
+    state.aiCompanionGroup.rotation.y,
+    yawForDirection(nx, nz),
+    1 - Math.exp(-8 * delta)
+  );
+  state.aiCompanionGroup.traverse((child) => {
+    if (child.userData?.roverGlow && child.material?.opacity !== undefined) {
+      child.material.opacity = 0.14 + Math.sin(clock.elapsedTime * 5.2) * 0.06;
+    }
+  });
+}
+
+function updateAiShockwaves(delta) {
+  for (let i = state.aiShockwaves.length - 1; i >= 0; i -= 1) {
+    const ring = state.aiShockwaves[i];
+    const data = ring.userData.aiShock;
+    data.age += delta;
+    const t = data.age / data.life;
+    if (t >= 1) {
+      if (ring.parent) ring.parent.remove(ring);
+      ring.material?.dispose?.();
+      state.aiShockwaves.splice(i, 1);
+      continue;
+    }
+    const scale = 1 + t * 4.8;
+    ring.scale.setScalar(scale);
+    ring.material.opacity = (1 - t) * 0.46;
+  }
+}
+
 function buildWorld() {
   state.buildSerial += 1;
   const serial = state.buildSerial;
@@ -2444,6 +2642,8 @@ function buildWorld() {
   clearGroup(dynamic);
   state.dustPuffs.forEach((puff) => puff.material?.dispose?.());
   state.dustPuffs = [];
+  state.aiShockwaves.forEach((ring) => ring.material?.dispose?.());
+  state.aiShockwaves = [];
   state.playerDustTimer = 0;
   hoverMesh.visible = false;
   state.tilePickMeshes = [];
@@ -2484,6 +2684,8 @@ function buildWorld() {
     dynamic.add(seeker.group);
     placeGroupOnCell(seeker.group, seeker.cell);
   }
+
+  ensureAiCompanion();
 
   state.minimapDirty = true;
   drawMiniMap();
@@ -2575,7 +2777,9 @@ function resetRunStats() {
     sightings: 0,
     bestGemStreak: 0,
     allGemsCollected: false,
-    escaped: false
+    escaped: false,
+    aiModifier: 0,
+    aiActions: 0
   };
 }
 
@@ -2696,6 +2900,16 @@ function startNewRound(options = {}) {
   clearSeekerTrackers();
   state.trackerCooldown = 2.6;
   state.caughtCueCooldown = 0;
+  state.aiSeekerSlowTimer = 0;
+  state.aiSeekerSlowMultiplier = 1;
+  state.aiSeekerStunTimer = 0;
+  state.aiDifficultyTimer = 0;
+  state.aiDifficultyMultiplier = 1;
+  state.aiShockwaves.forEach((ring) => {
+    if (ring.parent) ring.parent.remove(ring);
+    ring.material?.dispose?.();
+  });
+  state.aiShockwaves = [];
   state.playerVelocity.set(0, 0, 0);
   keys.clear();
   if (pauseButton) pauseButton.textContent = 'Pause';
@@ -2807,6 +3021,8 @@ function seekerStepDuration(seeker = null) {
   const base = Math.max(0.24, SEEKER_BASE_SPEED - (speed - 3) * 0.045);
   let multiplier = seekerAlertActive(seeker) ? SEEKER_ALERT_SPEED_MULTIPLIER : 1;
   if ((seeker?.coordinationTimer || 0) > 0) multiplier *= SEEKER_BLACKBOARD_SPEED_MULTIPLIER;
+  if (state.aiSeekerSlowTimer > 0) multiplier *= state.aiSeekerSlowMultiplier;
+  if (state.aiDifficultyTimer > 0) multiplier *= state.aiDifficultyMultiplier;
   return Math.max(0.16, base * multiplier);
 }
 
@@ -2907,11 +3123,7 @@ function openAiPanel() {
   syncAiPanel();
   aiPanel.classList.remove('hidden');
   aiButton?.setAttribute('aria-expanded', 'true');
-  if (state.started && state.round === 'playing') {
-    state.round = 'paused';
-    state.aiPausedGame = true;
-    showPauseOverlay('Paused.', { persist: true });
-  }
+  state.aiPausedGame = false;
   syncMobileControls();
 }
 
@@ -2938,10 +3150,19 @@ function toggleAiPanel() {
   else closeAiPanel();
 }
 
+function syncPlayerViewButton() {
+  if (!playerViewButton) return;
+  const label = state.playerViewMode ? 'Exit Street View' : 'Open Street View';
+  playerViewButton.classList.toggle('active', state.playerViewMode);
+  playerViewButton.setAttribute('aria-pressed', String(state.playerViewMode));
+  playerViewButton.setAttribute('aria-label', label);
+  playerViewButton.setAttribute('title', label);
+  if (playerViewLabel) playerViewLabel.textContent = label;
+}
+
 function setPlayerViewMode(force = !state.playerViewMode) {
   state.playerViewMode = Boolean(force);
-  playerViewButton?.classList.toggle('active', state.playerViewMode);
-  playerViewButton?.setAttribute('aria-pressed', String(state.playerViewMode));
+  syncPlayerViewButton();
   updateCameraProjection();
   updateCamera(true);
   setToast(state.playerViewMode ? 'Street view on.' : 'Map view on.', { duration: 1.2 });
@@ -2995,6 +3216,8 @@ function initialize() {
   if (!applyPersistedLayout(true)) applyPreset(state.worldPreset, true);
   updateControlBindingLabels();
   syncDeveloperSection();
+  syncAiPanel();
+  syncPlayerViewButton();
   syncTouchControlsToggle();
   syncMobileControls();
   syncResponsiveHud();
@@ -3108,6 +3331,22 @@ function directionFromInput() {
     screenX += state.mobileJoystick.screenX;
     screenY += state.mobileJoystick.screenY;
   }
+
+  if (state.playerViewMode && state.player?.group) {
+    const forwardInput = Math.max(-1, Math.min(1, -screenY));
+    const turnInput = Math.max(-1, Math.min(1, screenX));
+    if (Math.abs(forwardInput) < 0.05 && Math.abs(turnInput) < 0.05) return null;
+    const yaw = state.player.group.rotation.y;
+    return {
+      dx: Math.sin(yaw) * forwardInput,
+      dz: Math.cos(yaw) * forwardInput,
+      facing: null,
+      street: true,
+      moveAmount: forwardInput,
+      turnInput
+    };
+  }
+
   if (Math.hypot(screenX, screenY) < 0.05) return null;
   let dx = screenX + screenY;
   let dz = screenY - screenX;
@@ -3285,21 +3524,45 @@ function updatePlayer(delta) {
   const direction = directionFromInput();
   let running = false;
   if (direction && state.round === 'playing' && !state.editorOpen) {
-    running = controlActive('run');
-    const speedCap = PLAYER_MOVE_SPEED * (running ? PLAYER_RUN_MULTIPLIER : 1);
-    const steer = 1 - Math.exp(-(running ? PLAYER_RUN_STEER_RESPONSE : PLAYER_STEER_RESPONSE) * delta);
-    velocity.x += (direction.dx * speedCap - velocity.x) * steer;
-    velocity.z += (direction.dz * speedCap - velocity.z) * steer;
-    const speed = Math.hypot(velocity.x, velocity.z);
-    if (speed > speedCap) {
-      velocity.x = (velocity.x / speed) * speedCap;
-      velocity.z = (velocity.z / speed) * speedCap;
+    if (direction.street) {
+      const moveAmount = Math.max(-1, Math.min(1, direction.moveAmount || 0));
+      const turnInput = Math.max(-1, Math.min(1, direction.turnInput || 0));
+      if (Math.abs(turnInput) > 0.02) {
+        state.player.group.rotation.y += turnInput * STREET_VIEW_TURN_SPEED * delta;
+      }
+      const movingForward = Math.abs(moveAmount) > 0.05;
+      running = movingForward && controlActive('run');
+      const reverseMultiplier = moveAmount < 0 ? STREET_VIEW_REVERSE_MULTIPLIER : 1;
+      const speedCap = PLAYER_MOVE_SPEED * STREET_VIEW_MOVE_MULTIPLIER * reverseMultiplier * (running ? PLAYER_RUN_MULTIPLIER : 1);
+      const yaw = state.player.group.rotation.y;
+      const targetX = movingForward ? Math.sin(yaw) * moveAmount * speedCap : 0;
+      const targetZ = movingForward ? Math.cos(yaw) * moveAmount * speedCap : 0;
+      const steer = 1 - Math.exp(-(running ? PLAYER_RUN_STEER_RESPONSE : PLAYER_STEER_RESPONSE) * delta);
+      velocity.x += (targetX - velocity.x) * steer;
+      velocity.z += (targetZ - velocity.z) * steer;
+      const speed = Math.hypot(velocity.x, velocity.z);
+      const maxSpeed = speedCap * Math.abs(moveAmount);
+      if (speed > Math.max(PLAYER_EPSILON, maxSpeed)) {
+        velocity.x = maxSpeed > 0 ? (velocity.x / speed) * maxSpeed : 0;
+        velocity.z = maxSpeed > 0 ? (velocity.z / speed) * maxSpeed : 0;
+      }
+    } else {
+      running = controlActive('run');
+      const speedCap = PLAYER_MOVE_SPEED * (running ? PLAYER_RUN_MULTIPLIER : 1);
+      const steer = 1 - Math.exp(-(running ? PLAYER_RUN_STEER_RESPONSE : PLAYER_STEER_RESPONSE) * delta);
+      velocity.x += (direction.dx * speedCap - velocity.x) * steer;
+      velocity.z += (direction.dz * speedCap - velocity.z) * steer;
+      const speed = Math.hypot(velocity.x, velocity.z);
+      if (speed > speedCap) {
+        velocity.x = (velocity.x / speed) * speedCap;
+        velocity.z = (velocity.z / speed) * speedCap;
+      }
+      state.player.group.rotation.y = lerpAngle(
+        state.player.group.rotation.y,
+        yawForDirection(direction.dx, direction.dz),
+        1 - Math.exp(-PLAYER_TURN_RESPONSE * delta)
+      );
     }
-    state.player.group.rotation.y = lerpAngle(
-      state.player.group.rotation.y,
-      yawForDirection(direction.dx, direction.dz),
-      1 - Math.exp(-PLAYER_TURN_RESPONSE * delta)
-    );
   } else {
     velocity.multiplyScalar(Math.exp(-PLAYER_STOP_RESPONSE * delta));
     if (velocity.lengthSq() < PLAYER_EPSILON * PLAYER_EPSILON) velocity.set(0, 0, 0);
@@ -3777,6 +4040,156 @@ function playCaughtCue() {
   state.caughtCueCooldown = 1.15;
 }
 
+function getAiGameState() {
+  return {
+    difficulty: state.difficulty,
+    gemsCollected: state.collected,
+    gemTotal: state.gems.length,
+    seekerCount: state.seekers.length,
+    seekersTarget: Number(seekerCountInput.value || 0),
+    seekerSpeed: Number(seekerSpeedInput.value || 0),
+    escapeUnlocked: state.escapeUnlocked,
+    playerCell: state.player?.cell ? { x: state.player.cell.x, z: state.player.cell.z } : null,
+    activeEffects: {
+      slowSeekers: Math.ceil(state.aiSeekerSlowTimer),
+      stunSeekers: Math.ceil(state.aiSeekerStunTimer),
+      difficultyBoost: Math.ceil(state.aiDifficultyTimer)
+    }
+  };
+}
+
+function inferLocalAiAction(prompt) {
+  const text = prompt.toLowerCase();
+  if (/stun|shock|zap|freeze/.test(text)) {
+    return { action: 'stun_seekers', message: 'Shock burst ready. Seekers are stunned for a moment.' };
+  }
+  if (/hard|ramp|faster|harder|challenge|difficulty up/.test(text)) {
+    return { action: 'ramp_difficulty', message: 'Difficulty ramped. Seekers will move with more urgency.' };
+  }
+  if (/easy|easier|slow|calm|less difficult|help/.test(text)) {
+    return { action: 'slow_seekers', message: 'Seekers slowed. Use the opening.' };
+  }
+  if (/where|hint|gem|exit|gate/.test(text)) {
+    return { action: 'reveal_hint', message: 'Hint pulse sent toward the nearest objective.' };
+  }
+  return { action: 'ease_game', message: 'The rover softened the pressure for a few seconds.' };
+}
+
+async function requestAiAgentAction(prompt) {
+  const settings = readAiSettings();
+  if (!settings.key) return inferLocalAiAction(prompt);
+  try {
+    const response = await fetch('/api/agent-brain', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        provider: settings.provider,
+        endpoint: settings.endpoint,
+        apiKey: settings.key,
+        model: settings.model || AI_RECOMMENDED_MODEL,
+        gameState: getAiGameState()
+      })
+    });
+    if (!response.ok) throw new Error(`AI route failed: ${response.status}`);
+    const data = await response.json();
+    if (!data || typeof data.action !== 'string') throw new Error('AI route returned no action');
+    return data;
+  } catch {
+    return inferLocalAiAction(prompt);
+  }
+}
+
+function nearestUncollectedGemCell() {
+  if (!state.player?.cell) return null;
+  let best = null;
+  let bestDistance = Infinity;
+  for (const gem of state.gems) {
+    if (gem.collected) continue;
+    const cell = getCell(gem.x, gem.z);
+    const distance = cell ? gridDistance(state.player.cell, cell) : Infinity;
+    if (distance < bestDistance) {
+      best = cell;
+      bestDistance = distance;
+    }
+  }
+  return best || state.escapeCell || null;
+}
+
+function recordAiScore(action) {
+  const modifier = AI_TOOL_SCORE[action] || 0;
+  state.runStats.aiModifier = (state.runStats.aiModifier || 0) + modifier;
+  state.runStats.aiActions = (state.runStats.aiActions || 0) + 1;
+}
+
+function applyAiCompanionAction(result, sourcePrompt = '') {
+  const action = result?.action || inferLocalAiAction(sourcePrompt).action;
+  let message = result?.message || 'Rover action complete.';
+  recordAiScore(action);
+  ensureAiCompanion();
+
+  if (action === 'slow_seekers') {
+    state.aiSeekerSlowTimer = Math.max(state.aiSeekerSlowTimer, 9);
+    state.aiSeekerSlowMultiplier = 1.68;
+    message = message || 'Seekers slowed.';
+  } else if (action === 'stun_seekers') {
+    state.aiSeekerStunTimer = Math.max(state.aiSeekerStunTimer, 2.25);
+    addAiShockwave();
+    message = message || 'Shock burst fired.';
+  } else if (action === 'ramp_difficulty') {
+    state.aiDifficultyTimer = Math.max(state.aiDifficultyTimer, 12);
+    state.aiDifficultyMultiplier = 0.7;
+    triggerAgentBlackboard('sighting', state.player?.cell);
+    setSquadMessages('Rover raised the stakes. Converging faster.', 3.2);
+    message = message || 'Difficulty ramped.';
+  } else if (action === 'focus_seekers') {
+    triggerAgentBlackboard('sighting', state.player?.cell);
+    setSquadMessages('Rover broadcast a clean challenge ping.', 3.2);
+    message = message || 'Seekers received your location.';
+  } else if (action === 'reveal_hint') {
+    const cell = nearestUncollectedGemCell();
+    if (cell) {
+      state.signalPingCell = cell;
+      state.signalPingArea = areaAroundCell(cell, 0);
+      state.signalPingTimer = PLAYER_SIGNAL_INTERVAL;
+      state.minimapDirty = true;
+    }
+    message = message || 'Hint pulse sent.';
+  } else {
+    state.aiSeekerSlowTimer = Math.max(state.aiSeekerSlowTimer, 5);
+    state.aiSeekerSlowMultiplier = 1.35;
+    message = message || 'Pressure eased briefly.';
+  }
+
+  addAiCompanionMessage(`Rover: ${message}`);
+  setToast(message, { duration: 2.8 });
+}
+
+async function handleAiCommand(event) {
+  event.preventDefault();
+  const prompt = aiCommandInput?.value?.trim();
+  if (!prompt || state.aiCompanionBusy) return;
+  if (!aiHasKey()) {
+    addAiCompanionMessage('Rover offline: save an API key first.');
+    setToast('Save an API key to spawn the rover companion.', { urgent: true });
+    syncAiCompanionAvailability();
+    return;
+  }
+  if (state.round !== 'playing') {
+    addAiCompanionMessage('Rover: start a round before using game tools.');
+    setToast('Start a round before using rover tools.');
+    return;
+  }
+  state.aiCompanionBusy = true;
+  syncAiCompanionAvailability();
+  addAiCompanionMessage(`You: ${prompt}`);
+  aiCommandInput.value = '';
+  const result = await requestAiAgentAction(prompt);
+  applyAiCompanionAction(result, prompt);
+  state.aiCompanionBusy = false;
+  syncAiCompanionAvailability();
+}
+
 function triggerAgentBlackboard(reason = 'signal', anchorCell = null, sourceSeeker = null) {
   if (state.round !== 'playing' || state.sandboxMode || !state.seekers.length) return false;
 
@@ -4242,6 +4655,18 @@ function updateSeekers(delta) {
   updateSquadBlackboard(delta);
   assignSeekerRoles();
 
+  if (state.aiSeekerStunTimer > 0) {
+    for (const seeker of state.seekers) {
+      seeker.moving = null;
+      setSeekerMessage(seeker, 'Rover shock. Systems stunned.', 0.45);
+      seeker.group.position.y = walkHeight(seeker.cell) + Math.abs(Math.sin(clock.elapsedTime * 20 + seeker.id)) * 0.1;
+      animateCharacter(seeker.group, clock.elapsedTime * 16);
+      setSeekerAlert(seeker, true);
+    }
+    soundscape.setDanger(0.25);
+    return;
+  }
+
   let nearest = Infinity;
   for (const seeker of state.seekers) {
     const seesPlayer = lineOfSight(seeker, state.player.cell);
@@ -4363,7 +4788,8 @@ function calculateRunScore(won) {
   const collectionScore = state.collected * 100;
   const baseTotal = collectionScore + timeBonus + noTrapBonus + noSightingBonus + allGemsStreak + escapeBonus;
   const difficultyAdjustment = Math.round(baseTotal * (difficultyMultiplier - 1));
-  const total = Math.max(0, baseTotal + difficultyAdjustment);
+  const aiModifier = Math.round(state.runStats.aiModifier || 0);
+  const total = Math.max(0, baseTotal + difficultyAdjustment + aiModifier);
   let rank = 'Captured';
   if (won && noTrapBonus && noSightingBonus && timeBonus > 0) rank = 'Perfect Escape';
   else if (won && noTrapBonus && noSightingBonus) rank = 'Clean Escape';
@@ -4380,6 +4806,7 @@ function calculateRunScore(won) {
     difficultyLabel: difficulty.label || 'Medium',
     difficultyMultiplier,
     difficultyAdjustment,
+    aiModifier,
     total,
     rank
   };
@@ -4399,6 +4826,7 @@ function renderRoundScore(won) {
   ];
   if (won) rows.push(['Escape bonus', `+${score.escapeBonus}`]);
   rows.push(['Difficulty adjustment', `${score.difficultyAdjustment >= 0 ? '+' : ''}${score.difficultyAdjustment}`]);
+  rows.push(['AI rover modifier', `${score.aiModifier >= 0 ? '+' : ''}${score.aiModifier}`]);
   rows.push(['Rank', score.rank]);
   roundScore.innerHTML = `
     <dl class="score-breakdown">
@@ -6028,6 +6456,7 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
   state.caughtCueCooldown = Math.max(0, (state.caughtCueCooldown || 0) - delta);
   if (state.round === 'playing') {
+    soundscape.setGameplayLoop(true);
     state.runStats.elapsed += delta;
     updatePlayer(delta);
     if (state.round === 'playing') {
@@ -6036,12 +6465,16 @@ function animate() {
       updateSeekerTrackers(delta);
     }
   } else if (state.round === 'escapeReveal') {
+    soundscape.setGameplayLoop(false);
     soundscape.setRunLoop(false);
     updateEscapeReveal(delta);
   } else {
+    soundscape.setGameplayLoop(false);
     soundscape.setRunLoop(false);
   }
   updateSeekerMessages(delta);
+  updateAiCompanion(delta);
+  updateAiShockwaves(delta);
   updateDustPuffs(delta);
   for (const gem of state.gems) {
     if (gem.group && !gem.collected) {
@@ -6178,6 +6611,7 @@ function bindEvents() {
   closeAiPanelButton?.addEventListener('click', () => closeAiPanel());
   saveAiSettingsButton?.addEventListener('click', saveAiSettings);
   clearAiSettingsButton?.addEventListener('click', clearAiSettings);
+  aiCommandForm?.addEventListener('submit', handleAiCommand);
   playerViewButton?.addEventListener('click', () => setPlayerViewMode());
   seekerPanelToggle?.addEventListener('click', () => setSeekerPanelCollapsed());
   closeMenu?.addEventListener('click', () => closeMenuPanel());

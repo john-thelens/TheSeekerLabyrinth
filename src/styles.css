@@ -402,15 +402,20 @@ button {
   top: calc(18px + var(--safe-top) + clamp(208px, 14.5vw, 260px) + 14px);
   right: calc(18px + var(--safe-right));
   z-index: 30;
-  width: 52px;
+  width: auto;
+  min-width: 52px;
   height: 52px;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 16px 0 14px;
   border: 1px solid rgba(20, 20, 20, 0.16);
-  border-radius: 10px;
+  border-radius: 999px;
   background: rgba(255, 255, 252, 0.86);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .player-view-button.active {
@@ -459,6 +464,14 @@ button {
 
 .player-view-button.active .pegman-icon::after {
   background: rgba(17, 17, 17, 0.28);
+}
+
+.player-view-label {
+  color: #111;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
 }
 
 .hamburger,
@@ -596,6 +609,80 @@ button {
   border-color: #111;
   background: #111;
   color: #fff;
+}
+
+.ai-companion-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(20, 20, 20, 0.14);
+  border-radius: 8px;
+  background: rgba(248, 248, 242, 0.88);
+}
+
+.ai-companion-box.unavailable {
+  opacity: 0.72;
+}
+
+.ai-companion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ai-companion-head strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.ai-companion-head span,
+.ai-companion-log {
+  color: #494946;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.ai-companion-log {
+  min-height: 48px;
+  max-height: 116px;
+  overflow-y: auto;
+  padding: 9px;
+  border: 1px dashed rgba(20, 20, 20, 0.18);
+  border-radius: 7px;
+  background: rgba(255, 255, 252, 0.72);
+}
+
+.ai-companion-log p {
+  margin: 0 0 7px;
+}
+
+.ai-companion-log p:last-child {
+  margin-bottom: 0;
+}
+
+.ai-command-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.ai-command-form input {
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid rgba(20, 20, 20, 0.18);
+  border-radius: 6px;
+  padding: 0 10px;
+  background: #fff;
+  color: #111;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ai-command-form button {
+  min-width: 76px;
 }
 
 .ai-footnote {
@@ -2628,8 +2715,11 @@ button {
   .player-view-button {
     top: calc(12px + var(--safe-top) + 112px + 10px);
     right: calc(10px + var(--safe-right));
-    width: 44px;
+    min-width: 44px;
+    width: auto;
     height: 44px;
+    gap: 8px;
+    padding: 0 12px 0 11px;
   }
 
   .pegman-icon {
@@ -2641,6 +2731,10 @@ button {
     top: -11px;
     width: 12px;
     height: 12px;
+  }
+
+  .player-view-label {
+    font-size: 12px;
   }
 
   .mini-map-card {
