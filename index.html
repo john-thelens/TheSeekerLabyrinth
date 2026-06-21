@@ -95,7 +95,7 @@
         </button>
       </nav>
 
-      <button id="playerViewButton" class="player-view-button" type="button" aria-label="Toggle player view" aria-pressed="false" title="Player view">
+      <button id="playerViewButton" class="player-view-button" type="button" aria-label="Toggle street view" aria-pressed="false" title="Street view">
         <span class="pegman-icon" aria-hidden="true"></span>
       </button>
 
@@ -116,12 +116,16 @@
           <span>Provider</span>
           <select id="aiProvider">
             <option value="openai">OpenAI API</option>
-            <option value="openai-compatible">OpenAI-compatible / Poe API</option>
+            <option value="openai-compatible">OpenAI-compatible endpoint</option>
           </select>
         </label>
         <label class="ai-field">
+          <span>Model</span>
+          <input id="aiModel" class="ai-model-box" type="text" value="gpt-5.4-nano (recommended)" readonly aria-readonly="true" />
+        </label>
+        <label class="ai-field">
           <span>Endpoint</span>
-          <input id="aiEndpoint" type="url" autocomplete="off" placeholder="Optional, for OpenAI-compatible routes" />
+          <input id="aiEndpoint" type="url" autocomplete="off" placeholder="Optional custom OpenAI-compatible route" />
         </label>
         <label class="ai-field">
           <span>API key</span>
@@ -131,7 +135,7 @@
           <button id="saveAiSettings" type="button">Save locally</button>
           <button id="clearAiSettings" type="button">Clear</button>
         </div>
-        <p class="ai-footnote">When to add the key: after we add the server or Vercel API route that calls OpenAI/Poe. For public deploys, keep real keys in environment variables, not in game code.</p>
+        <p class="ai-footnote">When to add the key: after we add the server or Vercel API route that calls the AI provider. For public deploys, keep real keys in environment variables, not in game code.</p>
       </section>
 
       <div id="gemPip" aria-live="polite">

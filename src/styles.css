@@ -389,8 +389,8 @@ button {
 }
 
 .ai-rail-button img {
-  width: 34px;
-  height: 34px;
+  width: 42px;
+  height: 42px;
   display: block;
   object-fit: contain;
   object-position: center;
@@ -407,7 +407,7 @@ button {
   display: grid;
   place-items: center;
   border: 1px solid rgba(20, 20, 20, 0.16);
-  border-radius: 999px;
+  border-radius: 10px;
   background: rgba(255, 255, 252, 0.86);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
   cursor: pointer;
@@ -415,7 +415,7 @@ button {
 
 .player-view-button.active {
   border-color: #111;
-  background: #111;
+  background: #f7df72;
 }
 
 .pegman-icon {
@@ -454,11 +454,11 @@ button {
 
 .player-view-button.active .pegman-icon,
 .player-view-button.active .pegman-icon::before {
-  border-color: #fff;
+  border-color: #111;
 }
 
 .player-view-button.active .pegman-icon::after {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(17, 17, 17, 0.28);
 }
 
 .hamburger,
@@ -577,6 +577,13 @@ button {
   background: #fff;
   color: #111;
   font-weight: 700;
+}
+
+.ai-model-box {
+  border-color: rgba(20, 20, 20, 0.08) !important;
+  background: #ececea !important;
+  color: #4c4c48 !important;
+  cursor: default;
 }
 
 .ai-actions {

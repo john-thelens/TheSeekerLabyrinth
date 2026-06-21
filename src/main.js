@@ -25,6 +25,7 @@ import {
   OctahedronGeometry,
   OrthographicCamera,
   PCFSoftShadowMap,
+  PerspectiveCamera,
   Plane,
   PlaneGeometry,
   Raycaster,
@@ -70,6 +71,7 @@ const THREE = {
   OctahedronGeometry,
   OrthographicCamera,
   PCFSoftShadowMap,
+  PerspectiveCamera,
   Plane,
   PlaneGeometry,
   Raycaster,
@@ -147,10 +149,10 @@ const CONTROL_DEFS = {
   run: { label: 'Run', defaultCode: 'ShiftLeft', fallbackCodes: ['ShiftRight'] }
 };
 const DIFFICULTIES = {
-  easy: { gems: 6, seekers: 2, speed: 2, world: 'atrium' },
-  medium: { gems: 10, seekers: 4, speed: 3, world: 'atrium' },
-  hard: { gems: 15, seekers: 8, speed: 4, world: 'atrium' },
-  veryHard: { gems: 20, seekers: 14, speed: 5, world: 'atrium' }
+  easy: { label: 'Easy', gems: 6, seekers: 2, speed: 2, world: 'atrium', scoreMultiplier: 0.85 },
+  medium: { label: 'Medium', gems: 10, seekers: 4, speed: 3, world: 'atrium', scoreMultiplier: 1 },
+  hard: { label: 'Hard', gems: 15, seekers: 8, speed: 4, world: 'atrium', scoreMultiplier: 1.2 },
+  veryHard: { label: 'Very Hard', gems: 20, seekers: 14, speed: 5, world: 'atrium', scoreMultiplier: 1.45 }
 };
 const GEM_SPAWN_MINIMUM = 20;
 
@@ -201,6 +203,7 @@ const aiRailLogo = document.querySelector('#aiRailLogo');
 const aiPanel = document.querySelector('#aiPanel');
 const closeAiPanelButton = document.querySelector('#closeAiPanel');
 const aiProvider = document.querySelector('#aiProvider');
+const aiModel = document.querySelector('#aiModel');
 const aiEndpoint = document.querySelector('#aiEndpoint');
 const aiKey = document.querySelector('#aiKey');
 const aiStatus = document.querySelector('#aiStatus');
@@ -275,10 +278,13 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000205);
 
 const camera = new THREE.OrthographicCamera(-12, 12, 8, -8, 0.1, 200);
+const streetCamera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 200);
 const cameraOffset = new THREE.Vector3(14, 14, 14);
-const cameraPlayerViewOffset = new THREE.Vector3(8.2, 6.4, 8.2);
 const cameraFocus = new THREE.Vector3();
 const cameraTarget = new THREE.Vector3();
+const streetCameraDesired = new THREE.Vector3();
+const streetCameraLookAt = new THREE.Vector3();
+const streetCameraForward = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const pointer = new THREE.Vector2();
@@ -960,12 +966,12 @@ function readAiSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(AI_SETTINGS_STORAGE_KEY) || 'null');
     return {
-      provider: saved?.provider === 'openai' ? 'openai' : 'openai-compatible',
+      provider: saved?.provider === 'openai-compatible' ? 'openai-compatible' : 'openai',
       endpoint: typeof saved?.endpoint === 'string' ? saved.endpoint : '',
       key: typeof saved?.key === 'string' ? saved.key : ''
     };
   } catch {
-    return { provider: 'openai-compatible', endpoint: '', key: '' };
+    return { provider: 'openai', endpoint: '', key: '' };
   }
 }
 
@@ -985,7 +991,7 @@ function syncAiPanel() {
 function saveAiSettings() {
   const existing = readAiSettings();
   const next = {
-    provider: aiProvider?.value === 'openai' ? 'openai' : 'openai-compatible',
+    provider: aiProvider?.value === 'openai-compatible' ? 'openai-compatible' : 'openai',
     endpoint: aiEndpoint?.value?.trim() || '',
     key: aiKey?.value?.trim() || existing.key || ''
   };
@@ -2938,7 +2944,7 @@ function setPlayerViewMode(force = !state.playerViewMode) {
   playerViewButton?.setAttribute('aria-pressed', String(state.playerViewMode));
   updateCameraProjection();
   updateCamera(true);
-  setToast(state.playerViewMode ? 'Player view on.' : 'Map view on.', { duration: 1.2 });
+  setToast(state.playerViewMode ? 'Street view on.' : 'Map view on.', { duration: 1.2 });
 }
 
 function syncDeveloperSection() {
@@ -4347,13 +4353,17 @@ function formatRunTime(seconds) {
 
 function calculateRunScore(won) {
   const elapsed = state.runStats.elapsed || 0;
+  const difficulty = DIFFICULTIES[state.difficulty] || DIFFICULTIES.medium;
+  const difficultyMultiplier = difficulty.scoreMultiplier || 1;
   const timeBonus = won ? Math.max(0, Math.round((ESCAPE_TIME_PAR_SECONDS - elapsed) * 18)) : 0;
   const noTrapBonus = won && state.runStats.traps === 0 ? 900 : 0;
   const noSightingBonus = won && state.runStats.sightings === 0 ? 1200 : 0;
   const allGemsStreak = (state.runStats.allGemsCollected ? state.gems.length : state.runStats.bestGemStreak) * 120;
   const escapeBonus = won ? 1200 : 0;
   const collectionScore = state.collected * 100;
-  const total = collectionScore + timeBonus + noTrapBonus + noSightingBonus + allGemsStreak + escapeBonus;
+  const baseTotal = collectionScore + timeBonus + noTrapBonus + noSightingBonus + allGemsStreak + escapeBonus;
+  const difficultyAdjustment = Math.round(baseTotal * (difficultyMultiplier - 1));
+  const total = Math.max(0, baseTotal + difficultyAdjustment);
   let rank = 'Captured';
   if (won && noTrapBonus && noSightingBonus && timeBonus > 0) rank = 'Perfect Escape';
   else if (won && noTrapBonus && noSightingBonus) rank = 'Clean Escape';
@@ -4367,6 +4377,9 @@ function calculateRunScore(won) {
     noSightingBonus,
     allGemsStreak,
     escapeBonus,
+    difficultyLabel: difficulty.label || 'Medium',
+    difficultyMultiplier,
+    difficultyAdjustment,
     total,
     rank
   };
@@ -4377,6 +4390,7 @@ function renderRoundScore(won) {
   const score = calculateRunScore(won);
   const rows = [
     ['Run time', formatRunTime(score.elapsed)],
+    ['Difficulty', `${score.difficultyLabel} x${score.difficultyMultiplier.toFixed(2)}`],
     ['Gem score', `+${score.collectionScore}`],
     ['Time bonus', `+${score.timeBonus}`],
     ['No-trap bonus', `+${score.noTrapBonus}`],
@@ -4384,6 +4398,7 @@ function renderRoundScore(won) {
     ['All-gems streak', `+${score.allGemsStreak}`]
   ];
   if (won) rows.push(['Escape bonus', `+${score.escapeBonus}`]);
+  rows.push(['Difficulty adjustment', `${score.difficultyAdjustment >= 0 ? '+' : ''}${score.difficultyAdjustment}`]);
   rows.push(['Rank', score.rank]);
   roundScore.innerHTML = `
     <dl class="score-breakdown">
@@ -5589,7 +5604,7 @@ function setPointer(event) {
 
 function pickCell(event) {
   setPointer(event);
-  raycaster.setFromCamera(pointer, camera);
+  raycaster.setFromCamera(pointer, state.playerViewMode ? streetCamera : camera);
   const hits = raycaster.intersectObjects(state.tilePickMeshes, false);
   if (hits[0]?.object?.userData?.cell) return hits[0].object.userData.cell;
   const point = new THREE.Vector3();
@@ -5914,8 +5929,20 @@ function updateCamera(immediate = false, delta = 1 / 60) {
   else if (p) cameraTarget.set(p.x, 0, p.z);
   if (immediate) cameraFocus.copy(cameraTarget);
   else cameraFocus.lerp(cameraTarget, 1 - Math.exp(-delta * 8));
-  camera.position.copy(cameraFocus).add(state.playerViewMode ? cameraPlayerViewOffset : cameraOffset);
+  camera.position.copy(cameraFocus).add(cameraOffset);
   camera.lookAt(cameraFocus);
+
+  if (state.playerViewMode && state.player?.group) {
+    const yaw = state.player.group.rotation.y;
+    streetCameraForward.set(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
+    streetCameraDesired.copy(p).addScaledVector(streetCameraForward, -CELL * 2.35);
+    streetCameraDesired.y = p.y + 2.35;
+    streetCameraLookAt.copy(p).addScaledVector(streetCameraForward, CELL * 2.4);
+    streetCameraLookAt.y = p.y + 0.9;
+    if (immediate) streetCamera.position.copy(streetCameraDesired);
+    else streetCamera.position.lerp(streetCameraDesired, 1 - Math.exp(-delta * 9));
+    streetCamera.lookAt(streetCameraLookAt);
+  }
 }
 
 function updateEscapeReveal(delta) {
@@ -5960,12 +5987,15 @@ function updateCameraProjection() {
   const shortLandscape = window.matchMedia('(orientation: landscape) and (max-height: 560px)').matches;
   const compactTouch = window.matchMedia('(max-width: 760px), (hover: none), (pointer: coarse)').matches;
   const baseView = shortLandscape ? 7 : (compactTouch ? 10.4 : 12);
-  const view = state.playerViewMode ? baseView * 0.58 : baseView;
+  const view = baseView;
   camera.left = -view * aspect;
   camera.right = view * aspect;
   camera.top = view;
   camera.bottom = -view;
   camera.updateProjectionMatrix();
+  streetCamera.aspect = aspect;
+  streetCamera.fov = shortLandscape ? 54 : 58;
+  streetCamera.updateProjectionMatrix();
 }
 
 function updateRiverWaves(time) {
@@ -6047,7 +6077,7 @@ function animate() {
   }
   updateHover();
   updateCamera(false, delta);
-  renderer.render(scene, camera);
+  renderer.render(scene, state.playerViewMode ? streetCamera : camera);
   requestAnimationFrame(animate);
 }
 
