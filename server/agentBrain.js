@@ -75,6 +75,11 @@ function systemPrompt() {
     'Use the amount field for specific quantities and intensity words: slight=1, more=2, very=4, maximum/extreme=10.',
     'Respect extreme numeric requests when they are explicit, such as 99 seekers or 20x player speed.',
     'For relative requests such as remove more than half or remove all except one, choose the closest action and let the game resolve the exact live amount.',
+    'Examples: "remove 90% of gems" => {"action":"remove_gem","amount":90}.',
+    'Examples: "get rid of all seekers except for 1" => {"action":"remove_seeker","amount":99}.',
+    'Examples: "make the player speed 20x" => {"action":"boost_player","amount":20}.',
+    'Examples: "make seekers speed 0.1x" => {"action":"slow_seekers","amount":10}.',
+    'Never use reveal_hint for prompts that ask to add, remove, reduce, increase, slow, speed up, or otherwise change game state.',
     'Return short, diegetic messages. Never include coordinates, secrets, markdown, or extra keys.'
   ].join(' ');
 }

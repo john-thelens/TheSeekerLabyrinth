@@ -4551,6 +4551,8 @@ function inferLocalAiAction(prompt) {
 }
 
 async function requestAiAgentAction(prompt) {
+  const forced = resolveForcedAiPrompt(prompt);
+  if (forced) return forced;
   const settings = readAiSettings();
   if (!settings.key) return inferLocalAiAction(prompt);
   try {
@@ -4674,6 +4676,31 @@ function promptHasExplicitAiToolIntent(prompt = '') {
   return hasTarget && hasChange;
 }
 
+function resolveForcedAiPrompt(prompt = '') {
+  const promptText = prompt.toLowerCase();
+  const action = aiForcedActionFromPrompt(promptText);
+  if (!action) return null;
+  const fallback = inferLocalAiAction(prompt);
+  const explicitAmount = aiNumberFromText(promptText, null);
+  const relativeAmount = aiRelativeAmountFromText(promptText, action);
+  const speedMultiplier = aiSpeedMultiplierFromText(promptText);
+  const multiplierAmount = Number.isFinite(speedMultiplier)
+    ? (speedMultiplier < 1 && action === 'slow_seekers' ? Math.ceil(1 / speedMultiplier) : Math.ceil(speedMultiplier))
+    : null;
+  const requestedAmount = Number.isFinite(relativeAmount)
+    ? relativeAmount
+    : Number.isFinite(multiplierAmount)
+      ? multiplierAmount
+      : Number.isFinite(explicitAmount)
+        ? explicitAmount
+        : Number(fallback.amount ?? 1);
+  return {
+    action,
+    amount: clampAiAmount(requestedAmount, aiToolLimitForAction(action)),
+    message: 'Rover command routed.'
+  };
+}
+
 function normalizeAiCompanionAction(result, sourcePrompt = '') {
   const promptText = sourcePrompt.toLowerCase();
   const fallback = inferLocalAiAction(sourcePrompt);
@@ -4695,7 +4722,9 @@ function normalizeAiCompanionAction(result, sourcePrompt = '') {
       : Number(result?.amount ?? fallback.amount ?? 1);
   const amount = clampAiAmount(requestedAmount, aiToolLimitForAction(action));
   const message = String(
-    (fallbackIsSpecific && promptHasToolIntent) || forcedAction
+    forcedAction
+      ? 'Rover command routed.'
+      : fallbackIsSpecific && promptHasToolIntent
       ? fallback.message
       : result?.message || fallback.message || 'Rover action complete.'
   ).slice(0, 140);
