@@ -4429,11 +4429,11 @@ function aiAmountForPrompt(text, max, fallback = 1) {
 
 function inferLocalAiAction(prompt) {
   const text = prompt.toLowerCase();
-  if (/(player|me|myself|runner|avatar).*(slow|slower|less speed|too fast)|slow (me|player|runner|avatar)/.test(text)) {
-    return { action: 'slow_player', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.speed), message: 'Player speed dampened for a moment.' };
+  if (/\b(i|me|my|myself|player|runner|avatar)\b.*\b(slow|slower|reduce|decrease|less speed|too fast)\b|\b(slow|reduce|decrease).*\b(me|my speed|player|runner|avatar)\b/.test(text)) {
+    return { action: 'slow_player', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.speed, 2), message: 'Player speed dampened for a moment.' };
   }
-  if (/(player|me|myself|runner|avatar).*(fast|faster|speed|boost|haste)|speed (me|player|runner|avatar)|make me faster/.test(text)) {
-    return { action: 'boost_player', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.speed), message: 'Player speed boosted.' };
+  if (/\b(i|me|my|myself|player|runner|avatar)\b.*\b(fast|faster|speed|boost|haste|quick|quicker)\b|\b(make|speed up|boost|increase).*\b(me|my speed|player|runner|avatar)\b/.test(text)) {
+    return { action: 'boost_player', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.speed, 2), message: 'Player speed boosted.' };
   }
   if (/(remove|delete|despawn|less|fewer|take away).*(seekers?|agents?)/.test(text)) {
     return { action: 'remove_seeker', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.seeker), message: 'Seeker pressure reduced.' };
@@ -4601,12 +4601,21 @@ function normalizeAiCompanionAction(result, sourcePrompt = '') {
   const fallback = inferLocalAiAction(sourcePrompt);
   let action = AI_ACTIONS.has(result?.action) ? result.action : fallback.action;
   const fallbackIsSpecific = fallback.action !== 'ease_game' && fallback.action !== 'reveal_hint';
+  const promptHasToolIntent = promptHasExplicitAiToolIntent(sourcePrompt);
   if (fallbackIsSpecific && action === 'reveal_hint') action = fallback.action;
-  if (fallbackIsSpecific && action !== fallback.action && promptHasExplicitAiToolIntent(sourcePrompt)) {
+  if (fallbackIsSpecific && promptHasToolIntent) {
     action = fallback.action;
   }
-  const amount = clampAiAmount(Number(result?.amount ?? fallback.amount ?? 1), aiToolLimitForAction(action));
-  const message = String(result?.message || fallback.message || 'Rover action complete.').slice(0, 140);
+  const explicitAmount = aiNumberFromText(sourcePrompt.toLowerCase(), null);
+  const requestedAmount = Number.isFinite(explicitAmount)
+    ? explicitAmount
+    : Number(result?.amount ?? fallback.amount ?? 1);
+  const amount = clampAiAmount(requestedAmount, aiToolLimitForAction(action));
+  const message = String(
+    fallbackIsSpecific && promptHasToolIntent
+      ? fallback.message
+      : result?.message || fallback.message || 'Rover action complete.'
+  ).slice(0, 140);
   return { action, amount, message };
 }
 
@@ -4620,10 +4629,10 @@ function setSeekerSpeedByDelta(delta = 0) {
 
 function setPlayerSpeedEffect(amount = 1, faster = true) {
   const strength = clampAiAmount(amount, AI_TOOL_LIMITS.speed);
-  state.aiPlayerSpeedTimer = Math.max(state.aiPlayerSpeedTimer, 7 + strength * 2);
+  state.aiPlayerSpeedTimer = Math.max(state.aiPlayerSpeedTimer, 9 + strength * 2.5);
   state.aiPlayerSpeedMultiplier = faster
-    ? 1 + strength * 0.12
-    : Math.max(0.5, 1 - strength * 0.09);
+    ? Math.max(1.22, 1 + strength * 0.16)
+    : Math.max(0.48, 1 - strength * 0.1);
   if (state.player?.group) {
     addAiBeam(state.player.group.position, faster ? 'green' : 'amber', {
       targetYOffset: 0.9,

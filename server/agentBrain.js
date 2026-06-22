@@ -117,19 +117,19 @@ function amountForPrompt(text, fallback = 1) {
 function fallbackAction(prompt = '') {
   const text = prompt.toLowerCase();
   const amount = amountForPrompt(text);
-  if (/(player|me|myself|runner|avatar).*(slow|slower|less speed|too fast)|slow (me|player|runner|avatar)/.test(text)) {
+  if (/\b(i|me|my|myself|player|runner|avatar)\b.*\b(slow|slower|reduce|decrease|less speed|too fast)\b|\b(slow|reduce|decrease).*\b(me|my speed|player|runner|avatar)\b/.test(text)) {
     return { action: 'slow_player', amount, message: 'Player speed dampened for a moment.' };
   }
-  if (/(player|me|myself|runner|avatar).*(fast|faster|speed|boost|haste)|speed (me|player|runner|avatar)|make me faster/.test(text)) {
+  if (/\b(i|me|my|myself|player|runner|avatar)\b.*\b(fast|faster|speed|boost|haste|quick|quicker)\b|\b(make|speed up|boost|increase).*\b(me|my speed|player|runner|avatar)\b/.test(text)) {
     return { action: 'boost_player', amount, message: 'Player speed boosted.' };
   }
   if (/(remove|delete|despawn|less|fewer|take away).*(seekers?|agents?)/.test(text)) {
     return { action: 'remove_seeker', amount, message: 'Seeker pressure reduced.' };
   }
-  if (/more gems?|extra gems?|add (a )?gem|spawn (a )?gem|another gem|new gem/.test(text)) {
+  if (/(more|extra|add|spawn|another|new).*(\d+\s+)?(a\s+)?(gems?|objectives?|diamonds?)/.test(text)) {
     return { action: 'add_gem', amount, message: 'Bonus gems deployed. Score adjusted for rover help.' };
   }
-  if (/remove (some )?gems?|fewer gems?|less gems?|delete (some )?gems?|take away (some )?gems?/.test(text)) {
+  if (/(remove|delete|despawn|less|fewer|take away).*(\d+\s+)?(some\s+)?(gems?|objectives?|diamonds?)/.test(text)) {
     return { action: 'remove_gem', amount, message: 'Unclaimed gems removed. Score adjusted for rover help.' };
   }
   if (/more seekers?|extra seekers?|add (a )?seeker|spawn (a )?seeker|send seekers?|summon seekers?/.test(text)) {
@@ -168,8 +168,16 @@ function normalizeAction(raw, prompt = '') {
   let action = ACTIONS.includes(source.action) ? source.action : fallback.action;
   const fallbackIsSpecific = fallback.action !== 'ease_game' && fallback.action !== 'reveal_hint';
   if (fallbackIsSpecific && action === 'reveal_hint') action = fallback.action;
-  const message = clampText(source.message || fallback.message, 140);
-  const amount = clampAmount(Number(source.amount ?? fallback.amount ?? 1));
+  const promptHasToolIntent = /\b(add|spawn|more|increase|remove|delete|less|fewer|slow|slower|fast|faster|speed|boost|harder|easier|easy|hard|very|super|extreme|maximum)\b/.test(prompt.toLowerCase());
+  if (fallbackIsSpecific && promptHasToolIntent) action = fallback.action;
+  const message = clampText(
+    fallbackIsSpecific && promptHasToolIntent
+      ? fallback.message
+      : source.message || fallback.message,
+    140
+  );
+  const explicitAmount = numberFromText(prompt.toLowerCase());
+  const amount = clampAmount(Number(explicitAmount ?? source.amount ?? fallback.amount ?? 1));
   return { action, amount, message };
 }
 
