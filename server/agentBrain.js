@@ -8,6 +8,7 @@ const ACTIONS = [
   'focus_seekers',
   'reveal_hint',
   'add_gem',
+  'remove_gem',
   'add_seeker'
 ];
 
@@ -53,6 +54,7 @@ function systemPrompt() {
     'Use ramp_difficulty or focus_seekers only when the player asks for harder play, danger, pressure, or a challenge.',
     'Use reveal_hint when the player asks where to go, where gems are, where the gate is, or asks for a hint.',
     'Use add_gem only when the player asks for more gems, a bonus gem, or a new objective.',
+    'Use remove_gem only when the player asks for fewer gems, fewer objectives, or an easier route.',
     'Use add_seeker only when the player asks for more seekers, extra pressure, or a more crowded chase.',
     'Return short, diegetic messages. Never include coordinates, secrets, markdown, or extra keys.'
   ].join(' ');
@@ -62,6 +64,9 @@ function fallbackAction(prompt = '') {
   const text = prompt.toLowerCase();
   if (/more gems?|extra gems?|add (a )?gem|spawn (a )?gem|another gem|new gem/.test(text)) {
     return { action: 'add_gem', message: 'Bonus gem deployed. Score adjusted for rover help.' };
+  }
+  if (/remove (some )?gems?|fewer gems?|less gems?|delete (some )?gems?|take away (some )?gems?/.test(text)) {
+    return { action: 'remove_gem', message: 'One unclaimed gem removed. Score adjusted for rover help.' };
   }
   if (/more seekers?|extra seekers?|add (a )?seeker|spawn (a )?seeker|send seekers?|summon seekers?/.test(text)) {
     return { action: 'add_seeker', message: 'Extra seeker entering. Risk reward raised.' };
@@ -79,7 +84,7 @@ function fallbackAction(prompt = '') {
     return { action: 'reveal_hint', message: 'Hint pulse sent toward the nearest objective.' };
   }
   if (/easy|easier|slow|calm|less difficult|help/.test(text)) {
-    return { action: 'slow_seekers', message: 'Seekers slowed. Use the opening.' };
+    return { action: 'slow_seekers', message: 'Electric slowdown fired. Seekers are moving slower.' };
   }
   return { action: 'ease_game', message: 'Pressure softened for a few seconds.' };
 }

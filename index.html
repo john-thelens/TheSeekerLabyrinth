@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap" rel="stylesheet" />
     <title>TheSeekerLabyrinth</title>
   </head>
   <body>
@@ -130,7 +133,30 @@
               </div>
             </div>
             <div id="aiCompanionLog" class="ai-companion-log" aria-live="polite">
-              <p>Try: "zap the seekers", "add a gem", "send another seeker", "make this easier", or "ramp up the difficulty".</p>
+              <p>Rover messages appear here.</p>
+            </div>
+            <div class="ai-suggestions" aria-label="Example rover commands">
+              <p>Try saying something like...</p>
+              <button type="button" data-ai-suggestion="Make the seekers slower">
+                <span class="ai-suggestion-icon emoji-font" aria-hidden="true">⚡</span>
+                <span>Make the seekers slower</span>
+              </button>
+              <button type="button" data-ai-suggestion="Add more seekers">
+                <span class="ai-suggestion-icon emoji-font" aria-hidden="true">👥</span>
+                <span>Add more seekers</span>
+              </button>
+              <button type="button" data-ai-suggestion="Remove some gems">
+                <span class="ai-suggestion-icon emoji-font" aria-hidden="true">💎</span>
+                <span>Remove some gems</span>
+              </button>
+              <button type="button" data-ai-suggestion="Show me the next objective">
+                <span class="ai-suggestion-icon emoji-font" aria-hidden="true">🧭</span>
+                <span>Show me the next objective</span>
+              </button>
+              <button type="button" data-ai-suggestion="Ramp up the difficulty">
+                <span class="ai-suggestion-icon emoji-font" aria-hidden="true">🔥</span>
+                <span>Ramp up the difficulty</span>
+              </button>
             </div>
             <form id="aiCommandForm" class="ai-command-form">
               <input id="aiCommandInput" type="text" autocomplete="off" placeholder="Ask the rover for help..." />

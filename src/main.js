@@ -155,6 +155,7 @@ const AI_TOOL_SCORE = {
   focus_seekers: 420,
   reveal_hint: -160,
   add_gem: -220,
+  remove_gem: -260,
   add_seeker: 360
 };
 // Keep false for public builds; flip locally when reshaping the shipped map.
@@ -236,6 +237,7 @@ const aiCompanionLog = document.querySelector('#aiCompanionLog');
 const aiCommandForm = document.querySelector('#aiCommandForm');
 const aiCommandInput = document.querySelector('#aiCommandInput');
 const aiCommandButton = document.querySelector('#aiCommandButton');
+const aiSuggestionButtons = [...document.querySelectorAll('[data-ai-suggestion]')];
 const playerViewButton = document.querySelector('#playerViewButton');
 const playerViewLabel = document.querySelector('#playerViewLabel');
 const streetViewHint = document.querySelector('#streetViewHint');
@@ -1091,7 +1093,9 @@ function setAiModelEditing(editing) {
 function renderAiCompanionLog() {
   if (!aiCompanionLog) return;
   const messages = state.aiCompanionMessages.slice(-4);
-  const fallback = 'Try: "zap the seekers", "add a gem", "send another seeker", "make this easier", or "ramp up the difficulty".';
+  const fallback = state.aiCompanionEnabled
+    ? 'Rover online. Pick an example below or type what you want changed.'
+    : 'Save an API key to bring the rover online.';
   aiCompanionLog.innerHTML = messages.length
     ? messages.map((message) => `<p>${escapeHtml(message)}</p>`).join('')
     : `<p>${fallback}</p>`;
@@ -1099,6 +1103,10 @@ function renderAiCompanionLog() {
 }
 
 function addAiCompanionMessage(message) {
+  if (state.aiCompanionMessages[state.aiCompanionMessages.length - 1] === message) {
+    renderAiCompanionLog();
+    return;
+  }
   state.aiCompanionMessages.push(message);
   if (state.aiCompanionMessages.length > 12) state.aiCompanionMessages.splice(0, state.aiCompanionMessages.length - 12);
   renderAiCompanionLog();
@@ -1115,6 +1123,9 @@ function syncAiCompanionAvailability() {
   }
   if (aiCommandInput) aiCommandInput.disabled = !available || state.aiCompanionBusy;
   if (aiCommandButton) aiCommandButton.disabled = !available || state.aiCompanionBusy;
+  aiSuggestionButtons.forEach((button) => {
+    button.disabled = state.aiCompanionBusy;
+  });
   if (available) ensureAiCompanion();
   else removeAiCompanion();
   renderAiCompanionLog();
@@ -4360,6 +4371,9 @@ function inferLocalAiAction(prompt) {
   if (/more gems?|extra gems?|add (a )?gem|spawn (a )?gem|another gem|new gem/.test(text)) {
     return { action: 'add_gem', message: 'Bonus gem deployed. Score adjusted for rover help.' };
   }
+  if (/remove (some )?gems?|fewer gems?|less gems?|delete (some )?gems?|take away (some )?gems?/.test(text)) {
+    return { action: 'remove_gem', message: 'One unclaimed gem removed. Score adjusted for rover help.' };
+  }
   if (/more seekers?|extra seekers?|add (a )?seeker|spawn (a )?seeker|send seekers?|summon seekers?/.test(text)) {
     return { action: 'add_seeker', message: 'Extra seeker entering. Risk reward raised.' };
   }
@@ -4370,7 +4384,7 @@ function inferLocalAiAction(prompt) {
     return { action: 'ramp_difficulty', message: 'Difficulty ramped. Seekers will move with more urgency.' };
   }
   if (/easy|easier|slow|calm|less difficult|help/.test(text)) {
-    return { action: 'slow_seekers', message: 'Seekers slowed. Use the opening.' };
+    return { action: 'slow_seekers', message: 'Electric slowdown fired. Seekers are moving slower.' };
   }
   if (/where|hint|gem|exit|gate/.test(text)) {
     return { action: 'reveal_hint', message: 'Hint pulse sent toward the nearest objective.' };
@@ -4443,6 +4457,34 @@ function spawnAiBonusGem() {
   return cell;
 }
 
+function removeAiObjectiveGem(count = 1) {
+  if (state.escapeUnlocked) return 0;
+  const candidates = state.gems
+    .filter((gem) => !gem.collected)
+    .map((gem) => {
+      const cell = getCell(gem.x, gem.z);
+      const distance = state.player?.cell && cell ? gridDistance(state.player.cell, cell) : 0;
+      return { gem, distance };
+    })
+    .sort((a, b) => b.distance - a.distance);
+  let removed = 0;
+  while (removed < count && candidates.length && state.gems.length - state.collected > 1) {
+    const { gem } = candidates.shift();
+    if (gem.group?.parent) gem.group.parent.remove(gem.group);
+    const index = state.gems.indexOf(gem);
+    if (index >= 0) {
+      state.gems.splice(index, 1);
+      removed += 1;
+    }
+  }
+  if (removed) {
+    updateGemHud();
+    state.minimapDirty = true;
+    if (state.collected >= state.gems.length) unlockEscapeRoute();
+  }
+  return removed;
+}
+
 function addAiSeekerTarget(count = 1) {
   const current = Number(seekerCountInput.value || 0);
   const next = Math.min(30, current + count);
@@ -4477,7 +4519,7 @@ function applyAiCompanionAction(result, sourcePrompt = '') {
     const targets = state.seekers.slice(0, 5);
     targets.forEach((seeker) => addAiBeamToSeeker(seeker, 'electric', { life: 0.7, width: 1.25 }));
     addAiShockwave();
-    message = message || 'Seekers slowed.';
+    message = message || 'Electric slowdown fired. Seekers are moving slower.';
   } else if (action === 'stun_seekers') {
     state.aiSeekerStunTimer = Math.max(state.aiSeekerStunTimer, 2.25);
     state.seekers.forEach((seeker) => addAiBeamToSeeker(seeker, 'electric', { life: 0.72, width: 1.42 }));
@@ -4516,6 +4558,14 @@ function applyAiCompanionAction(result, sourcePrompt = '') {
     } else {
       message = 'No safe bonus gem spot is available right now.';
     }
+  } else if (action === 'remove_gem') {
+    const removed = removeAiObjectiveGem(1);
+    if (removed) {
+      addAiShockwave();
+      message = message || 'One unclaimed gem removed. The route is a little easier.';
+    } else {
+      message = 'No removable gem is available right now.';
+    }
   } else if (action === 'add_seeker') {
     const before = state.seekers.length;
     const { spawned } = addAiSeekerTarget(1);
@@ -4544,7 +4594,7 @@ async function handleAiCommand(event) {
     return;
   }
   if (state.round !== 'playing') {
-    addAiCompanionMessage('Rover: start a round before using game tools.');
+    addAiCompanionMessage('Rover: ready. Start a round and I can use game tools immediately.');
     setToast('Start a round before using rover tools.');
     return;
   }
@@ -4556,6 +4606,15 @@ async function handleAiCommand(event) {
   applyAiCompanionAction(result, prompt);
   state.aiCompanionBusy = false;
   syncAiCompanionAvailability();
+}
+
+function sendAiSuggestion(prompt) {
+  if (!aiCommandInput || !prompt) return;
+  aiCommandInput.value = prompt;
+  aiCommandInput.focus();
+  if (aiHasKey() && state.round === 'playing' && !state.aiCompanionBusy) {
+    aiCommandForm?.requestSubmit();
+  }
 }
 
 function triggerAgentBlackboard(reason = 'signal', anchorCell = null, sourceSeeker = null) {
@@ -7009,6 +7068,9 @@ function bindEvents() {
   saveAiSettingsButton?.addEventListener('click', saveAiSettings);
   clearAiSettingsButton?.addEventListener('click', clearAiSettings);
   aiCommandForm?.addEventListener('submit', handleAiCommand);
+  aiSuggestionButtons.forEach((button) => {
+    button.addEventListener('click', () => sendAiSuggestion(button.dataset.aiSuggestion || ''));
+  });
   playerViewButton?.addEventListener('click', () => setPlayerViewMode());
   seekerPanelToggle?.addEventListener('click', () => setSeekerPanelCollapsed());
   closeMenu?.addEventListener('click', () => closeMenuPanel());
