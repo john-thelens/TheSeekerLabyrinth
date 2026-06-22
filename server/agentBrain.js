@@ -6,7 +6,9 @@ const ACTIONS = [
   'ease_game',
   'ramp_difficulty',
   'focus_seekers',
-  'reveal_hint'
+  'reveal_hint',
+  'add_gem',
+  'add_seeker'
 ];
 
 const ACTION_SCHEMA = {
@@ -50,12 +52,20 @@ function systemPrompt() {
     'Use slow_seekers, stun_seekers, or ease_game only when the player asks for help or lower difficulty.',
     'Use ramp_difficulty or focus_seekers only when the player asks for harder play, danger, pressure, or a challenge.',
     'Use reveal_hint when the player asks where to go, where gems are, where the gate is, or asks for a hint.',
+    'Use add_gem only when the player asks for more gems, a bonus gem, or a new objective.',
+    'Use add_seeker only when the player asks for more seekers, extra pressure, or a more crowded chase.',
     'Return short, diegetic messages. Never include coordinates, secrets, markdown, or extra keys.'
   ].join(' ');
 }
 
 function fallbackAction(prompt = '') {
   const text = prompt.toLowerCase();
+  if (/more gems?|extra gems?|add (a )?gem|spawn (a )?gem|another gem|new gem/.test(text)) {
+    return { action: 'add_gem', message: 'Bonus gem deployed. Score adjusted for rover help.' };
+  }
+  if (/more seekers?|extra seekers?|add (a )?seeker|spawn (a )?seeker|send seekers?|summon seekers?/.test(text)) {
+    return { action: 'add_seeker', message: 'Extra seeker entering. Risk reward raised.' };
+  }
   if (/stun|shock|zap|freeze/.test(text)) {
     return { action: 'stun_seekers', message: 'Shock burst fired. Seekers are stunned for a moment.' };
   }

@@ -130,7 +130,7 @@
               </div>
             </div>
             <div id="aiCompanionLog" class="ai-companion-log" aria-live="polite">
-              <p>Try: "slow down the seekers", "make this harder", "stun nearby seekers", or "make this easier".</p>
+              <p>Try: "zap the seekers", "add a gem", "send another seeker", "make this easier", or "ramp up the difficulty".</p>
             </div>
             <form id="aiCommandForm" class="ai-command-form">
               <input id="aiCommandInput" type="text" autocomplete="off" placeholder="Ask the rover for help..." />
@@ -156,8 +156,11 @@
             <span class="ai-model-control">
               <input id="aiModel" class="ai-model-box" type="text" value="gpt-5.4-nano (recommended)" readonly aria-readonly="true" />
               <button id="editAiModel" class="ai-model-edit" type="button" aria-label="Edit model" title="Edit model">
-                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <svg class="ai-model-edit-pencil" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                   <path d="M4 20h4.3L19.6 8.7a2 2 0 0 0 0-2.8l-1.5-1.5a2 2 0 0 0-2.8 0L4 15.7V20Zm2-2v-1.5L16.7 5.8l1.5 1.5L7.5 18H6Z" />
+                </svg>
+                <svg class="ai-model-edit-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M9.2 16.6 4.9 12.3l1.7-1.7 2.6 2.6 8.2-8.2 1.7 1.7-9.9 9.9Z" />
                 </svg>
               </button>
             </span>

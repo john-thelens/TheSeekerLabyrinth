@@ -35,6 +35,7 @@ import {
   Sprite,
   SpriteMaterial,
   SRGBColorSpace,
+  TextureLoader,
   TorusGeometry,
   Vector2,
   Vector3,
@@ -81,6 +82,7 @@ const THREE = {
   Sprite,
   SpriteMaterial,
   SRGBColorSpace,
+  TextureLoader,
   TorusGeometry,
   Vector2,
   Vector3,
@@ -151,7 +153,9 @@ const AI_TOOL_SCORE = {
   ease_game: -260,
   ramp_difficulty: 520,
   focus_seekers: 420,
-  reveal_hint: -160
+  reveal_hint: -160,
+  add_gem: -220,
+  add_seeker: 360
 };
 // Keep false for public builds; flip locally when reshaping the shipped map.
 const DEVELOPER_TOOLS_ENABLED = false;
@@ -333,6 +337,10 @@ sun.position.set(8, 16, 9);
 sun.castShadow = false;
 scene.add(hemi, sun);
 
+const openAiLogoTexture = new THREE.TextureLoader().load(openAiLogoUrl);
+openAiLogoTexture.colorSpace = THREE.SRGBColorSpace;
+openAiLogoTexture.anisotropy = 4;
+
 const materials = {
   river: new THREE.MeshBasicMaterial({ color: 0x0f2940, transparent: true, opacity: 0.96, depthWrite: false }),
   tile: new THREE.MeshToonMaterial({ color: 0xf5f5ef }),
@@ -437,12 +445,23 @@ const materials = {
   escapeShip: new THREE.MeshToonMaterial({ color: 0xe4ebef }),
   escapeShipDark: new THREE.MeshToonMaterial({ color: 0x56616e }),
   escapeShipCanopy: new THREE.MeshBasicMaterial({ color: 0x78d9ff, transparent: true, opacity: 0.82 }),
-  aiRoverBody: new THREE.MeshToonMaterial({ color: 0xf8f8f3 }),
+  aiRoverBody: new THREE.MeshToonMaterial({ color: 0xfcfcf7 }),
   aiRoverTop: new THREE.MeshToonMaterial({ color: 0xffffff }),
   aiRoverDark: new THREE.MeshToonMaterial({ color: 0x2b2d30 }),
   aiRoverLight: new THREE.MeshBasicMaterial({ color: 0x7fdcff, transparent: true, opacity: 0.86 }),
   aiRoverGlow: new THREE.MeshBasicMaterial({ color: 0x55d8ff, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }),
+  aiRoverLogo: new THREE.MeshBasicMaterial({
+    map: openAiLogoTexture,
+    color: 0x050505,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  }),
   aiShock: new THREE.MeshBasicMaterial({ color: 0x79ecff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }),
+  aiElectricBeam: new THREE.MeshBasicMaterial({ color: 0x8ef7ff, transparent: true, opacity: 0.72, depthWrite: false }),
+  aiGreenBeam: new THREE.MeshBasicMaterial({ color: 0x72ff9a, transparent: true, opacity: 0.66, depthWrite: false }),
+  aiAmberBeam: new THREE.MeshBasicMaterial({ color: 0xffd447, transparent: true, opacity: 0.72, depthWrite: false }),
   tracker: new THREE.MeshBasicMaterial({ color: 0xff1e1e, transparent: true, opacity: 0.82, depthWrite: false }),
   trackerGlow: new THREE.MeshBasicMaterial({ color: 0xff3d38, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide })
 };
@@ -613,9 +632,11 @@ const trackerGlowGeometry = new THREE.RingGeometry(0.34, 0.72, 32);
 const escapePadGeometry = new THREE.TorusGeometry(0.82, 0.075, 10, 36);
 const escapeGlowGeometry = new THREE.RingGeometry(0.48, 1.22, 40);
 const escapeBeamGeometry = new THREE.ConeGeometry(0.86, 3.8, 32, 1, true);
-const aiRoverBodyGeometry = new THREE.CylinderGeometry(0.48, 0.58, 0.22, 28);
-const aiRoverGlowGeometry = new THREE.RingGeometry(0.44, 0.82, 36);
+const aiRoverBodyGeometry = new THREE.CylinderGeometry(0.62, 0.76, 0.26, 36);
+const aiRoverGlowGeometry = new THREE.RingGeometry(0.58, 1.08, 42);
+const aiRoverLogoGeometry = new THREE.PlaneGeometry(0.86, 0.86);
 const aiShockGeometry = new THREE.RingGeometry(0.68, 0.76, 48);
+const aiBeamGeometry = new THREE.CylinderGeometry(0.035, 0.035, 1, 8);
 const sphereGeometry = new THREE.SphereGeometry(0.26, 18, 14);
 const smallSphereGeometry = new THREE.SphereGeometry(0.1, 12, 8);
 const cylinderGeometry = new THREE.CylinderGeometry(0.16, 0.16, 1, 16);
@@ -746,6 +767,7 @@ const state = {
   aiDifficultyTimer: 0,
   aiDifficultyMultiplier: 1,
   aiShockwaves: [],
+  aiBeams: [],
   streetLookPitch: 0,
   streetLookDrag: {
     active: false,
@@ -1069,7 +1091,7 @@ function setAiModelEditing(editing) {
 function renderAiCompanionLog() {
   if (!aiCompanionLog) return;
   const messages = state.aiCompanionMessages.slice(-4);
-  const fallback = 'Try: "slow down the seekers", "make this harder", "stun nearby seekers", or "make this easier".';
+  const fallback = 'Try: "zap the seekers", "add a gem", "send another seeker", "make this easier", or "ramp up the difficulty".';
   aiCompanionLog.innerHTML = messages.length
     ? messages.map((message) => `<p>${escapeHtml(message)}</p>`).join('')
     : `<p>${fallback}</p>`;
@@ -2562,6 +2584,7 @@ function makeCharacter(material, accentMaterial = null) {
     group.add(eye);
   }
   group.scale.setScalar(1.26);
+  group.userData.baseScale = group.scale.x;
   return group;
 }
 
@@ -2621,56 +2644,45 @@ function makeAiCompanionRover() {
   const glow = new THREE.Mesh(aiRoverGlowGeometry, materials.aiRoverGlow.clone());
   glow.rotation.x = Math.PI / 2;
   glow.position.y = 0.055;
+  glow.scale.setScalar(1.08);
   glow.renderOrder = 2;
   glow.userData.roverGlow = true;
   group.add(glow);
 
   const body = new THREE.Mesh(aiRoverBodyGeometry, materials.aiRoverBody);
-  body.position.y = 0.22;
-  body.scale.set(1.18, 0.72, 1.18);
+  body.position.y = 0.23;
+  body.scale.set(1.1, 0.74, 1.1);
   createLineBox(body, edgeMaterial);
   group.add(body);
 
   const base = new THREE.Mesh(aiRoverBodyGeometry, materials.aiRoverDark);
-  base.position.y = 0.105;
-  base.scale.set(1.08, 0.26, 1.08);
+  base.position.y = 0.09;
+  base.scale.set(1.05, 0.18, 1.05);
   createLineBox(base, softEdgeMaterial);
   group.add(base);
 
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.035, 8, 42), materials.aiRoverDark);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.045, 8, 52), materials.aiRoverDark);
   rim.rotation.x = Math.PI / 2;
-  rim.position.y = 0.315;
+  rim.position.y = 0.335;
   group.add(rim);
 
-  const topPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.035, 36), materials.aiRoverTop);
-  topPlate.position.y = 0.338;
+  const topPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.66, 0.045, 40), materials.aiRoverTop);
+  topPlate.position.y = 0.365;
   createLineBox(topPlate, softEdgeMaterial);
   group.add(topPlate);
 
-  const logo = new THREE.Group();
-  const logoRadius = 0.22;
-  for (let i = 0; i < 6; i += 1) {
-    const angle = (Math.PI * 2 * i) / 6;
-    const loop = new THREE.Mesh(openAiLoopGeometry, materials.openaiMark);
-    loop.rotation.x = Math.PI / 2;
-    loop.rotation.z = angle + Math.PI / 6;
-    loop.position.set(Math.cos(angle) * logoRadius * 0.5, 0, Math.sin(angle) * logoRadius * 0.5);
-    loop.scale.setScalar(0.58);
-    logo.add(loop);
-  }
-  const center = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 8, 22), materials.openaiMark);
-  center.rotation.x = Math.PI / 2;
-  logo.add(center);
-  logo.position.y = 0.368;
-  logo.renderOrder = 5;
+  const logo = new THREE.Mesh(aiRoverLogoGeometry, materials.aiRoverLogo);
+  logo.rotation.x = -Math.PI / 2;
+  logo.position.y = 0.397;
+  logo.renderOrder = 9;
   group.add(logo);
 
   const light = new THREE.Mesh(smallSphereGeometry, materials.aiRoverLight.clone());
-  light.position.set(0, 0.405, -0.38);
-  light.scale.set(1.15, 0.28, 0.58);
+  light.position.set(0, 0.43, -0.54);
+  light.scale.set(1.28, 0.3, 0.62);
   group.add(light);
 
-  group.scale.setScalar(0.96);
+  group.scale.setScalar(1.24);
   return group;
 }
 
@@ -2698,6 +2710,67 @@ function addAiShockwave(origin = state.aiCompanionGroup?.position) {
   ring.userData.aiShock = { age: 0, life: 0.78 };
   dynamic.add(ring);
   state.aiShockwaves.push(ring);
+}
+
+function aiBeamMaterial(kind) {
+  if (kind === 'green') return materials.aiGreenBeam;
+  if (kind === 'amber') return materials.aiAmberBeam;
+  return materials.aiElectricBeam;
+}
+
+function addAiBeam(targetPosition, kind = 'electric', options = {}) {
+  if (!targetPosition || !state.aiCompanionGroup?.parent) return;
+  const start = state.aiCompanionGroup.position.clone();
+  start.y += options.startYOffset ?? 0.46;
+  const end = targetPosition.clone();
+  end.y += options.targetYOffset ?? 0.62;
+  const delta = end.clone().sub(start);
+  const length = delta.length();
+  if (length < 0.08) return;
+
+  const material = aiBeamMaterial(kind).clone();
+  const beam = new THREE.Mesh(aiBeamGeometry, material);
+  beam.position.copy(start).add(end).multiplyScalar(0.5);
+  beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize());
+  const width = options.width ?? 1;
+  beam.scale.set(width, length, width);
+  beam.renderOrder = 12;
+  beam.userData.aiBeam = {
+    age: 0,
+    life: options.life ?? 0.56,
+    baseOpacity: material.opacity ?? 0.7,
+    pulse: Math.random() * Math.PI * 2
+  };
+  dynamic.add(beam);
+  state.aiBeams.push(beam);
+}
+
+function addAiBeamToCell(cell, kind = 'electric', options = {}) {
+  if (!cell) return;
+  addAiBeam(worldPosition(cell.x, cell.z, walkHeight(cell)), kind, options);
+}
+
+function addAiBeamToSeeker(seeker, kind = 'electric', options = {}) {
+  if (!seeker?.group) return;
+  addAiBeam(seeker.group.position, kind, { targetYOffset: 1.0, ...options });
+}
+
+function clearAiVisualEffects() {
+  state.aiShockwaves.forEach((ring) => {
+    if (ring.parent) ring.parent.remove(ring);
+    ring.material?.dispose?.();
+  });
+  state.aiShockwaves = [];
+  state.aiBeams.forEach((beam) => {
+    if (beam.parent) beam.parent.remove(beam);
+    beam.material?.dispose?.();
+  });
+  state.aiBeams = [];
+  for (const seeker of state.seekers) {
+    if (!seeker.group) continue;
+    seeker.group.userData.aiBoostTimer = 0;
+    seeker.group.scale.setScalar(seeker.group.userData.baseScale || 1.26);
+  }
 }
 
 function updateAiCompanion(delta) {
@@ -2733,6 +2806,21 @@ function updateAiCompanion(delta) {
   });
 }
 
+function updateAiSeekerBoosts(delta) {
+  for (const seeker of state.seekers) {
+    if (!seeker.group) continue;
+    const base = seeker.group.userData.baseScale || 1.26;
+    const timer = Math.max(0, (seeker.group.userData.aiBoostTimer || 0) - delta);
+    seeker.group.userData.aiBoostTimer = timer;
+    if (timer > 0) {
+      const pulse = 1.08 + Math.sin(clock.elapsedTime * 14) * 0.035;
+      seeker.group.scale.setScalar(base * pulse);
+    } else if (Math.abs(seeker.group.scale.x - base) > 0.001) {
+      seeker.group.scale.setScalar(base);
+    }
+  }
+}
+
 function updateAiShockwaves(delta) {
   for (let i = state.aiShockwaves.length - 1; i >= 0; i -= 1) {
     const ring = state.aiShockwaves[i];
@@ -2751,6 +2839,26 @@ function updateAiShockwaves(delta) {
   }
 }
 
+function updateAiBeams(delta) {
+  for (let i = state.aiBeams.length - 1; i >= 0; i -= 1) {
+    const beam = state.aiBeams[i];
+    const data = beam.userData.aiBeam;
+    data.age += delta;
+    const t = data.age / data.life;
+    if (t >= 1) {
+      if (beam.parent) beam.parent.remove(beam);
+      beam.material?.dispose?.();
+      state.aiBeams.splice(i, 1);
+      continue;
+    }
+    const flicker = 0.68 + Math.sin(clock.elapsedTime * 35 + data.pulse) * 0.22;
+    beam.material.opacity = data.baseOpacity * (1 - t) * flicker;
+    const width = 1 + Math.sin(clock.elapsedTime * 22 + data.pulse) * 0.2;
+    beam.scale.x = width;
+    beam.scale.z = width;
+  }
+}
+
 function buildWorld() {
   state.buildSerial += 1;
   const serial = state.buildSerial;
@@ -2758,8 +2866,7 @@ function buildWorld() {
   clearGroup(dynamic);
   state.dustPuffs.forEach((puff) => puff.material?.dispose?.());
   state.dustPuffs = [];
-  state.aiShockwaves.forEach((ring) => ring.material?.dispose?.());
-  state.aiShockwaves = [];
+  clearAiVisualEffects();
   state.playerDustTimer = 0;
   hoverMesh.visible = false;
   state.tilePickMeshes = [];
@@ -3021,11 +3128,7 @@ function startNewRound(options = {}) {
   state.aiSeekerStunTimer = 0;
   state.aiDifficultyTimer = 0;
   state.aiDifficultyMultiplier = 1;
-  state.aiShockwaves.forEach((ring) => {
-    if (ring.parent) ring.parent.remove(ring);
-    ring.material?.dispose?.();
-  });
-  state.aiShockwaves = [];
+  clearAiVisualEffects();
   state.playerVelocity.set(0, 0, 0);
   keys.clear();
   if (pauseButton) pauseButton.textContent = 'Pause';
@@ -4254,6 +4357,12 @@ function getAiGameState() {
 
 function inferLocalAiAction(prompt) {
   const text = prompt.toLowerCase();
+  if (/more gems?|extra gems?|add (a )?gem|spawn (a )?gem|another gem|new gem/.test(text)) {
+    return { action: 'add_gem', message: 'Bonus gem deployed. Score adjusted for rover help.' };
+  }
+  if (/more seekers?|extra seekers?|add (a )?seeker|spawn (a )?seeker|send seekers?|summon seekers?/.test(text)) {
+    return { action: 'add_seeker', message: 'Extra seeker entering. Risk reward raised.' };
+  }
   if (/stun|shock|zap|freeze/.test(text)) {
     return { action: 'stun_seekers', message: 'Shock burst ready. Seekers are stunned for a moment.' };
   }
@@ -4310,6 +4419,46 @@ function nearestUncollectedGemCell() {
   return best || state.escapeCell || null;
 }
 
+function spawnAiBonusGem() {
+  if (state.escapeUnlocked) return null;
+  const occupied = new Set(state.gems.filter((gem) => !gem.collected).map((gem) => `${gem.x},${gem.z}`));
+  const fallback = state.cells.filter((cell) => passableGemCell(cell) && !cell.stairs);
+  const candidates = [...usableGemSpawnCells(), ...fallback]
+    .filter((cell, index, list) => (
+      cell &&
+      list.findIndex((item) => item?.x === cell.x && item?.z === cell.z) === index &&
+      !occupied.has(`${cell.x},${cell.z}`) &&
+      (!state.player?.cell || gridDistance(state.player.cell, cell) >= 3)
+    ));
+  const pool = candidates.length
+    ? candidates
+    : fallback.filter((cell) => !occupied.has(`${cell.x},${cell.z}`));
+  if (!pool.length) return null;
+  const cell = pool[Math.floor(Math.random() * pool.length)];
+  const gem = { x: cell.x, z: cell.z, collected: false, bonus: true };
+  state.gems.push(gem);
+  makeGemMesh(gem);
+  updateGemHud();
+  state.minimapDirty = true;
+  return cell;
+}
+
+function addAiSeekerTarget(count = 1) {
+  const current = Number(seekerCountInput.value || 0);
+  const next = Math.min(30, current + count);
+  syncRange(startSeekerCountInput, seekerCountInput, startSeekerCountValue, seekerCountValue, next);
+  let spawned = 0;
+  while (!state.sandboxMode && state.seekersSpawned < next && spawned < count) {
+    const beforeSpawn = state.seekers.length;
+    spawnSeeker();
+    if (state.seekers.length <= beforeSpawn) break;
+    spawned += 1;
+  }
+  assignSeekerRoles();
+  updateSeekerPanel(true);
+  return { next, spawned };
+}
+
 function recordAiScore(action) {
   const modifier = AI_TOOL_SCORE[action] || 0;
   state.runStats.aiModifier = (state.runStats.aiModifier || 0) + modifier;
@@ -4325,18 +4474,27 @@ function applyAiCompanionAction(result, sourcePrompt = '') {
   if (action === 'slow_seekers') {
     state.aiSeekerSlowTimer = Math.max(state.aiSeekerSlowTimer, 9);
     state.aiSeekerSlowMultiplier = 1.68;
+    const targets = state.seekers.slice(0, 5);
+    targets.forEach((seeker) => addAiBeamToSeeker(seeker, 'electric', { life: 0.7, width: 1.25 }));
+    addAiShockwave();
     message = message || 'Seekers slowed.';
   } else if (action === 'stun_seekers') {
     state.aiSeekerStunTimer = Math.max(state.aiSeekerStunTimer, 2.25);
+    state.seekers.forEach((seeker) => addAiBeamToSeeker(seeker, 'electric', { life: 0.72, width: 1.42 }));
     addAiShockwave();
     message = message || 'Shock burst fired.';
   } else if (action === 'ramp_difficulty') {
     state.aiDifficultyTimer = Math.max(state.aiDifficultyTimer, 12);
     state.aiDifficultyMultiplier = 0.7;
+    state.seekers.forEach((seeker) => {
+      seeker.group.userData.aiBoostTimer = Math.max(seeker.group.userData.aiBoostTimer || 0, 1.8);
+      addAiBeamToSeeker(seeker, 'green', { life: 0.75, width: 1.22 });
+    });
     triggerAgentBlackboard('sighting', state.player?.cell);
     setSquadMessages('Rover raised the stakes. Converging faster.', 3.2);
     message = message || 'Difficulty ramped.';
   } else if (action === 'focus_seekers') {
+    if (state.player?.group) addAiBeam(state.player.group.position, 'amber', { targetYOffset: 0.85, life: 0.65, width: 1.28 });
     triggerAgentBlackboard('sighting', state.player?.cell);
     setSquadMessages('Rover broadcast a clean challenge ping.', 3.2);
     message = message || 'Seekers received your location.';
@@ -4347,11 +4505,27 @@ function applyAiCompanionAction(result, sourcePrompt = '') {
       state.signalPingArea = areaAroundCell(cell, 0);
       state.signalPingTimer = PLAYER_SIGNAL_INTERVAL;
       state.minimapDirty = true;
+      addAiBeamToCell(cell, 'electric', { targetYOffset: 1.1, life: 0.72, width: 1.18 });
     }
     message = message || 'Hint pulse sent.';
+  } else if (action === 'add_gem') {
+    const cell = spawnAiBonusGem();
+    if (cell) {
+      addAiBeamToCell(cell, 'electric', { targetYOffset: 1.12, life: 0.8, width: 1.32 });
+      message = message || 'Bonus gem deployed.';
+    } else {
+      message = 'No safe bonus gem spot is available right now.';
+    }
+  } else if (action === 'add_seeker') {
+    const before = state.seekers.length;
+    const { spawned } = addAiSeekerTarget(1);
+    const seeker = state.seekers[Math.max(0, before)];
+    if (spawned && seeker) addAiBeamToSeeker(seeker, 'amber', { life: 0.82, width: 1.34 });
+    message = message || 'Extra seeker entering.';
   } else {
     state.aiSeekerSlowTimer = Math.max(state.aiSeekerSlowTimer, 5);
     state.aiSeekerSlowMultiplier = 1.35;
+    state.seekers.slice(0, 3).forEach((seeker) => addAiBeamToSeeker(seeker, 'electric', { life: 0.55, width: 1.1 }));
     message = message || 'Pressure eased briefly.';
   }
 
@@ -6668,7 +6842,9 @@ function animate() {
   }
   updateSeekerMessages(delta);
   updateAiCompanion(delta);
+  updateAiSeekerBoosts(delta);
   updateAiShockwaves(delta);
+  updateAiBeams(delta);
   updateDustPuffs(delta);
   for (const gem of state.gems) {
     if (gem.group && !gem.collected) {

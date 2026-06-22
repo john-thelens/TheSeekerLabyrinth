@@ -115,20 +115,22 @@ button {
   background:
     radial-gradient(circle at 50% 25%, rgba(47, 84, 126, 0.26), transparent 36%),
     radial-gradient(circle at 50% 62%, rgba(2, 7, 18, 0), rgba(0, 2, 8, 0.72) 72%),
-    linear-gradient(rgba(174, 203, 224, 0.095) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(174, 203, 224, 0.095) 1px, transparent 1px);
-  background-size: auto, auto, 44px 44px, 44px 44px;
-  background-position: center, center, 0 0, 0 0;
+    linear-gradient(rgba(174, 203, 224, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(174, 203, 224, 0.16) 1px, transparent 1px),
+    linear-gradient(rgba(174, 203, 224, 0.22) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(174, 203, 224, 0.22) 2px, transparent 2px);
+  background-size: auto, auto, 44px 44px, 44px 44px, 176px 176px, 176px 176px;
+  background-position: center, center, 0 0, 0 0, 0 0, 0 0;
   animation: titleGridDrift 3.5s linear infinite;
 }
 
 @keyframes titleGridDrift {
   from {
-    background-position: center, center, 0 0, 0 0;
+    background-position: center, center, 0 0, 0 0, 0 0, 0 0;
   }
 
   to {
-    background-position: center, center, 44px 44px, 44px 44px;
+    background-position: center, center, 176px 176px, 176px 176px, 176px 176px, 176px 176px;
   }
 }
 
@@ -792,10 +794,22 @@ button {
   fill: currentColor;
 }
 
+.ai-model-edit .ai-model-edit-check {
+  display: none;
+}
+
 .ai-model-edit.active {
   border-color: #111;
-  background: #111;
+  background: #16a34a;
   color: #fff;
+}
+
+.ai-model-edit.active .ai-model-edit-pencil {
+  display: none;
+}
+
+.ai-model-edit.active .ai-model-edit-check {
+  display: block;
 }
 
 .ai-actions {
