@@ -98,9 +98,11 @@ const PLAYER_RUN_STEER_RESPONSE = 14;
 const PLAYER_STOP_RESPONSE = 20;
 const PLAYER_TURN_RESPONSE = 20;
 const PLAYER_EPSILON = 0.018;
-const STREET_VIEW_TURN_SPEED = 2.55;
 const STREET_VIEW_MOVE_MULTIPLIER = 0.76;
 const STREET_VIEW_REVERSE_MULTIPLIER = 0.66;
+const STREET_VIEW_LOOK_SENSITIVITY_X = 0.0046;
+const STREET_VIEW_LOOK_SENSITIVITY_Y = 0.0034;
+const STREET_VIEW_MAX_PITCH = 0.58;
 const PLAYER_DUST_INTERVAL = 0.032;
 const SEEKER_BASE_SPEED = 0.58;
 const SEEKER_VISION_RANGE = CELL * 3.6;
@@ -214,6 +216,8 @@ const aiButton = document.querySelector('#aiButton');
 const aiRailLogo = document.querySelector('#aiRailLogo');
 const aiPanel = document.querySelector('#aiPanel');
 const closeAiPanelButton = document.querySelector('#closeAiPanel');
+const aiTabButtons = [...document.querySelectorAll('[data-ai-tab]')];
+const aiTabPanels = [...document.querySelectorAll('.ai-tab-panel')];
 const aiProvider = document.querySelector('#aiProvider');
 const aiModel = document.querySelector('#aiModel');
 const aiEndpoint = document.querySelector('#aiEndpoint');
@@ -739,6 +743,13 @@ const state = {
   aiDifficultyTimer: 0,
   aiDifficultyMultiplier: 1,
   aiShockwaves: [],
+  streetLookPitch: 0,
+  streetLookDrag: {
+    active: false,
+    pointerId: null,
+    lastX: 0,
+    lastY: 0
+  },
   buildSerial: 0,
   toastTimer: 0,
   pauseOverlayTimer: 0,
@@ -1063,6 +1074,20 @@ function syncAiPanel() {
       : 'Local seeker agents active. No AI key connected.';
   }
   syncAiCompanionAvailability();
+}
+
+function setAiPanelTab(tab = 'chat') {
+  const active = tab === 'settings' ? 'settings' : 'chat';
+  aiTabButtons.forEach((button) => {
+    const selected = button.dataset.aiTab === active;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-selected', String(selected));
+  });
+  aiTabPanels.forEach((panel) => {
+    const selected = panel.id === (active === 'settings' ? 'aiSettingsPane' : 'aiChatPane');
+    panel.classList.toggle('active', selected);
+    panel.hidden = !selected;
+  });
 }
 
 function saveAiSettings() {
@@ -3121,6 +3146,7 @@ function openAiPanel() {
   if (!aiPanel || !aiPanel.classList.contains('hidden')) return;
   closeMenuPanel({ resume: false, notify: false });
   syncAiPanel();
+  setAiPanelTab(aiHasKey() ? 'chat' : 'settings');
   aiPanel.classList.remove('hidden');
   aiButton?.setAttribute('aria-expanded', 'true');
   state.aiPausedGame = false;
@@ -3150,10 +3176,61 @@ function toggleAiPanel() {
   else closeAiPanel();
 }
 
+function resetStreetViewLook(pointerId = null) {
+  const drag = state.streetLookDrag;
+  if (!drag.active) return;
+  if (pointerId !== null && drag.pointerId !== pointerId) return;
+  if (drag.pointerId !== null && canvas?.hasPointerCapture?.(drag.pointerId)) {
+    try {
+      canvas.releasePointerCapture(drag.pointerId);
+    } catch {
+      // Pointer capture may already be gone after browser cleanup.
+    }
+  }
+  drag.active = false;
+  drag.pointerId = null;
+  drag.lastX = 0;
+  drag.lastY = 0;
+  canvas?.classList.remove('street-view-dragging');
+}
+
+function beginStreetViewLook(event) {
+  if (!state.playerViewMode || state.editorOpen || state.round !== 'playing' || !state.player?.group) return false;
+  if (event.pointerType === 'mouse' && event.button !== 0) return false;
+  resetStreetViewLook();
+  state.streetLookDrag.active = true;
+  state.streetLookDrag.pointerId = event.pointerId;
+  state.streetLookDrag.lastX = event.clientX;
+  state.streetLookDrag.lastY = event.clientY;
+  canvas?.setPointerCapture?.(event.pointerId);
+  canvas?.classList.add('street-view-dragging');
+  event.preventDefault();
+  return true;
+}
+
+function dragStreetViewLook(event) {
+  const drag = state.streetLookDrag;
+  if (!drag.active || drag.pointerId !== event.pointerId || !state.player?.group) return false;
+  const dx = event.clientX - drag.lastX;
+  const dy = event.clientY - drag.lastY;
+  drag.lastX = event.clientX;
+  drag.lastY = event.clientY;
+  state.player.group.rotation.y += dx * STREET_VIEW_LOOK_SENSITIVITY_X;
+  state.streetLookPitch = Math.max(
+    -STREET_VIEW_MAX_PITCH,
+    Math.min(STREET_VIEW_MAX_PITCH, state.streetLookPitch - dy * STREET_VIEW_LOOK_SENSITIVITY_Y)
+  );
+  updateCamera(true);
+  event.preventDefault();
+  return true;
+}
+
 function syncPlayerViewButton() {
   if (!playerViewButton) return;
   const label = state.playerViewMode ? 'Exit Street View' : 'Open Street View';
   playerViewButton.classList.toggle('active', state.playerViewMode);
+  canvas?.classList.toggle('street-view-active', state.playerViewMode);
+  if (!state.playerViewMode) resetStreetViewLook();
   playerViewButton.setAttribute('aria-pressed', String(state.playerViewMode));
   playerViewButton.setAttribute('aria-label', label);
   playerViewButton.setAttribute('title', label);
@@ -3161,7 +3238,10 @@ function syncPlayerViewButton() {
 }
 
 function setPlayerViewMode(force = !state.playerViewMode) {
-  state.playerViewMode = Boolean(force);
+  const nextMode = Boolean(force);
+  if (nextMode && !state.playerViewMode) state.streetLookPitch = 0;
+  if (!nextMode) resetStreetViewLook();
+  state.playerViewMode = nextMode;
   syncPlayerViewButton();
   updateCameraProjection();
   updateCamera(true);
@@ -3334,16 +3414,21 @@ function directionFromInput() {
 
   if (state.playerViewMode && state.player?.group) {
     const forwardInput = Math.max(-1, Math.min(1, -screenY));
-    const turnInput = Math.max(-1, Math.min(1, screenX));
-    if (Math.abs(forwardInput) < 0.05 && Math.abs(turnInput) < 0.05) return null;
+    const strafeInput = Math.max(-1, Math.min(1, screenX));
+    const moveAmount = Math.min(1, Math.hypot(forwardInput, strafeInput));
+    if (moveAmount < 0.05) return null;
     const yaw = state.player.group.rotation.y;
+    const dx = Math.sin(yaw) * forwardInput + Math.cos(yaw) * strafeInput;
+    const dz = Math.cos(yaw) * forwardInput - Math.sin(yaw) * strafeInput;
+    const length = Math.max(1, Math.hypot(dx, dz));
     return {
-      dx: Math.sin(yaw) * forwardInput,
-      dz: Math.cos(yaw) * forwardInput,
+      dx: dx / length,
+      dz: dz / length,
       facing: null,
       street: true,
-      moveAmount: forwardInput,
-      turnInput
+      moveAmount,
+      forwardInput,
+      strafeInput
     };
   }
 
@@ -3525,18 +3610,13 @@ function updatePlayer(delta) {
   let running = false;
   if (direction && state.round === 'playing' && !state.editorOpen) {
     if (direction.street) {
-      const moveAmount = Math.max(-1, Math.min(1, direction.moveAmount || 0));
-      const turnInput = Math.max(-1, Math.min(1, direction.turnInput || 0));
-      if (Math.abs(turnInput) > 0.02) {
-        state.player.group.rotation.y += turnInput * STREET_VIEW_TURN_SPEED * delta;
-      }
-      const movingForward = Math.abs(moveAmount) > 0.05;
-      running = movingForward && controlActive('run');
-      const reverseMultiplier = moveAmount < 0 ? STREET_VIEW_REVERSE_MULTIPLIER : 1;
+      const moveAmount = Math.max(0, Math.min(1, direction.moveAmount || 0));
+      const movingStreet = moveAmount > 0.05;
+      running = movingStreet && controlActive('run');
+      const reverseMultiplier = direction.forwardInput < -0.05 ? STREET_VIEW_REVERSE_MULTIPLIER : 1;
       const speedCap = PLAYER_MOVE_SPEED * STREET_VIEW_MOVE_MULTIPLIER * reverseMultiplier * (running ? PLAYER_RUN_MULTIPLIER : 1);
-      const yaw = state.player.group.rotation.y;
-      const targetX = movingForward ? Math.sin(yaw) * moveAmount * speedCap : 0;
-      const targetZ = movingForward ? Math.cos(yaw) * moveAmount * speedCap : 0;
+      const targetX = movingStreet ? direction.dx * moveAmount * speedCap : 0;
+      const targetZ = movingStreet ? direction.dz * moveAmount * speedCap : 0;
       const steer = 1 - Math.exp(-(running ? PLAYER_RUN_STEER_RESPONSE : PLAYER_STEER_RESPONSE) * delta);
       velocity.x += (targetX - velocity.x) * steer;
       velocity.z += (targetZ - velocity.z) * steer;
@@ -6366,7 +6446,7 @@ function updateCamera(immediate = false, delta = 1 / 60) {
     streetCameraDesired.copy(p).addScaledVector(streetCameraForward, -CELL * 2.35);
     streetCameraDesired.y = p.y + 2.35;
     streetCameraLookAt.copy(p).addScaledVector(streetCameraForward, CELL * 2.4);
-    streetCameraLookAt.y = p.y + 0.9;
+    streetCameraLookAt.y = p.y + 0.9 + state.streetLookPitch * CELL;
     if (immediate) streetCamera.position.copy(streetCameraDesired);
     else streetCamera.position.lerp(streetCameraDesired, 1 - Math.exp(-delta * 9));
     streetCamera.lookAt(streetCameraLookAt);
@@ -6597,18 +6677,34 @@ function bindEvents() {
   });
 
   canvas.addEventListener('contextmenu', (event) => event.preventDefault());
-  canvas.addEventListener('pointermove', dragEditorPaint);
-  canvas.addEventListener('pointerdown', async (event) => {
-    beginEditorPaint(event);
-    await soundscape.start();
+  canvas.addEventListener('pointermove', (event) => {
+    if (dragStreetViewLook(event)) return;
+    dragEditorPaint(event);
   });
-  canvas.addEventListener('pointerup', endEditorPaint);
-  canvas.addEventListener('pointercancel', endEditorPaint);
-  canvas.addEventListener('lostpointercapture', endEditorPaint);
+  canvas.addEventListener('pointerdown', async (event) => {
+    await soundscape.start();
+    if (beginStreetViewLook(event)) return;
+    beginEditorPaint(event);
+  });
+  canvas.addEventListener('pointerup', (event) => {
+    resetStreetViewLook(event.pointerId);
+    endEditorPaint(event);
+  });
+  canvas.addEventListener('pointercancel', (event) => {
+    resetStreetViewLook(event.pointerId);
+    endEditorPaint(event);
+  });
+  canvas.addEventListener('lostpointercapture', (event) => {
+    resetStreetViewLook(event.pointerId);
+    endEditorPaint(event);
+  });
 
   menuButton.addEventListener('click', toggleMenuPanel);
   aiButton?.addEventListener('click', toggleAiPanel);
   closeAiPanelButton?.addEventListener('click', () => closeAiPanel());
+  aiTabButtons.forEach((button) => {
+    button.addEventListener('click', () => setAiPanelTab(button.dataset.aiTab));
+  });
   saveAiSettingsButton?.addEventListener('click', saveAiSettings);
   clearAiSettingsButton?.addEventListener('click', clearAiSettings);
   aiCommandForm?.addEventListener('submit', handleAiCommand);

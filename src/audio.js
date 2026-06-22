@@ -3,7 +3,7 @@ import caughtUrl from './assets/audio/caught.mp3?url';
 import stepUrl from './assets/audio/step.wav?url';
 import backgroundUrl from './assets/audio/silence.wav?url';
 
-const BACKGROUND_LOOP_GAIN = 0.72;
+const BACKGROUND_LOOP_GAIN = 1.12;
 
 function rampParam(param, value, context, duration = 0.22) {
   param.cancelScheduledValues(context.currentTime);

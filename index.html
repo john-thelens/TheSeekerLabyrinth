@@ -108,50 +108,60 @@
           </div>
           <button id="closeAiPanel" type="button">Close</button>
         </div>
-        <div class="ai-callout">
-          <strong>No API key is needed to play.</strong>
-          <span>The seeker agents already run locally. Add a key only when you want the optional rover companion to read commands and use bounded game tools.</span>
+        <div class="ai-tabs" role="tablist" aria-label="AI panel sections">
+          <button id="aiChatTab" class="ai-tab active" data-ai-tab="chat" type="button" role="tab" aria-selected="true" aria-controls="aiChatPane">Chat</button>
+          <button id="aiSettingsTab" class="ai-tab" data-ai-tab="settings" type="button" role="tab" aria-selected="false" aria-controls="aiSettingsPane">API settings</button>
         </div>
-        <p id="aiStatus" class="ai-status">Local seeker agents active. No AI key connected.</p>
-        <label class="ai-field">
-          <span>Provider</span>
-          <select id="aiProvider">
-            <option value="openai">OpenAI API</option>
-            <option value="openai-compatible">OpenAI-compatible endpoint</option>
-          </select>
-        </label>
-        <label class="ai-field">
-          <span>Model</span>
-          <input id="aiModel" class="ai-model-box" type="text" value="gpt-5.4-nano (recommended)" readonly aria-readonly="true" />
-        </label>
-        <label class="ai-field">
-          <span>Endpoint</span>
-          <input id="aiEndpoint" type="url" autocomplete="off" placeholder="Optional custom OpenAI-compatible route" />
-        </label>
-        <label class="ai-field">
-          <span>API key</span>
-          <input id="aiKey" type="password" autocomplete="off" placeholder="Leave blank until the AI feature is enabled" />
-        </label>
-        <div class="ai-actions">
-          <button id="saveAiSettings" type="button">Save locally</button>
-          <button id="clearAiSettings" type="button">Clear</button>
-        </div>
-        <section id="aiCompanionBox" class="ai-companion-box unavailable" aria-label="AI rover companion">
-          <div class="ai-companion-head">
-            <div>
-              <strong>Rover companion</strong>
-              <span id="aiCompanionState">Save an API key to spawn the rover.</span>
+
+        <section id="aiChatPane" class="ai-tab-panel active" role="tabpanel" aria-labelledby="aiChatTab">
+          <p id="aiStatus" class="ai-status">Local seeker agents active. No AI key connected.</p>
+          <section id="aiCompanionBox" class="ai-companion-box unavailable" aria-label="AI rover companion">
+            <div class="ai-companion-head">
+              <div>
+                <strong>Rover companion</strong>
+                <span id="aiCompanionState">Save an API key to spawn the rover.</span>
+              </div>
             </div>
-          </div>
-          <div id="aiCompanionLog" class="ai-companion-log" aria-live="polite">
-            <p>Try: "slow down the seekers", "make this harder", "stun nearby seekers", or "make this easier".</p>
-          </div>
-          <form id="aiCommandForm" class="ai-command-form">
-            <input id="aiCommandInput" type="text" autocomplete="off" placeholder="Ask the rover for help..." />
-            <button id="aiCommandButton" type="submit">Send</button>
-          </form>
+            <div id="aiCompanionLog" class="ai-companion-log" aria-live="polite">
+              <p>Try: "slow down the seekers", "make this harder", "stun nearby seekers", or "make this easier".</p>
+            </div>
+            <form id="aiCommandForm" class="ai-command-form">
+              <input id="aiCommandInput" type="text" autocomplete="off" placeholder="Ask the rover for help..." />
+              <button id="aiCommandButton" type="submit">Send</button>
+            </form>
+          </section>
         </section>
-        <p class="ai-footnote">When to add the key: only if you want the optional rover companion. The game and seeker agents run locally without it.</p>
+
+        <section id="aiSettingsPane" class="ai-tab-panel" role="tabpanel" aria-labelledby="aiSettingsTab" hidden>
+          <div class="ai-callout">
+            <strong>No API key is needed to play.</strong>
+            <span>The seeker agents already run locally. Add a key only when you want the optional rover companion to read commands and use bounded game tools.</span>
+          </div>
+          <label class="ai-field">
+            <span>Provider</span>
+            <select id="aiProvider">
+              <option value="openai">OpenAI API</option>
+              <option value="openai-compatible">OpenAI-compatible endpoint</option>
+            </select>
+          </label>
+          <label class="ai-field">
+            <span>Model</span>
+            <input id="aiModel" class="ai-model-box" type="text" value="gpt-5.4-nano (recommended)" readonly aria-readonly="true" />
+          </label>
+          <label class="ai-field">
+            <span>Endpoint</span>
+            <input id="aiEndpoint" type="url" autocomplete="off" placeholder="Optional custom OpenAI-compatible route" />
+          </label>
+          <label class="ai-field">
+            <span>API key</span>
+            <input id="aiKey" type="password" autocomplete="off" placeholder="Leave blank until the AI feature is enabled" />
+          </label>
+          <div class="ai-actions">
+            <button id="saveAiSettings" type="button">Save locally</button>
+            <button id="clearAiSettings" type="button">Clear</button>
+          </div>
+          <p class="ai-footnote">When to add the key: only if you want the optional rover companion. The game and seeker agents run locally without it.</p>
+        </section>
       </section>
 
       <div id="gemPip" aria-live="polite">
