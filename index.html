@@ -89,7 +89,7 @@
         <button id="menuButton" class="rail-button" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="menuPanel" title="Menu">
           <span class="hamburger" aria-hidden="true"></span>
         </button>
-        <button id="aiButton" class="rail-button ai-rail-button" type="button" aria-label="Open optional AI settings" aria-expanded="false" aria-controls="aiPanel" title="Optional AI">
+        <button id="aiButton" class="rail-button ai-rail-button" type="button" aria-label="Open OpenAI Rover Controller" aria-expanded="false" aria-controls="aiPanel" title="OpenAI Rover Controller">
           <img id="aiRailLogo" alt="" />
         </button>
       </nav>
@@ -110,7 +110,8 @@
         <div class="ai-panel-head">
           <div>
             <p class="eyebrow">Optional</p>
-            <h2>AI Agent Brain</h2>
+            <h2>OpenAI Rover Controller</h2>
+            <p class="ai-subtitle">Use natural text to adjust difficulty mid-game. The rover chooses the best bounded action it can safely apply.</p>
           </div>
           <button id="closeAiPanel" type="button">Close</button>
         </div>
@@ -150,9 +151,16 @@
               <option value="openai-compatible">OpenAI-compatible endpoint</option>
             </select>
           </label>
-          <label class="ai-field">
+          <label class="ai-field ai-model-field">
             <span>Model</span>
-            <input id="aiModel" class="ai-model-box" type="text" value="gpt-5.4-nano (recommended)" readonly aria-readonly="true" />
+            <span class="ai-model-control">
+              <input id="aiModel" class="ai-model-box" type="text" value="gpt-5.4-nano (recommended)" readonly aria-readonly="true" />
+              <button id="editAiModel" class="ai-model-edit" type="button" aria-label="Edit model" title="Edit model">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M4 20h4.3L19.6 8.7a2 2 0 0 0 0-2.8l-1.5-1.5a2 2 0 0 0-2.8 0L4 15.7V20Zm2-2v-1.5L16.7 5.8l1.5 1.5L7.5 18H6Z" />
+                </svg>
+              </button>
+            </span>
           </label>
           <label class="ai-field">
             <span>Endpoint</span>

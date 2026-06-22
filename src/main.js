@@ -220,6 +220,7 @@ const aiTabButtons = [...document.querySelectorAll('[data-ai-tab]')];
 const aiTabPanels = [...document.querySelectorAll('.ai-tab-panel')];
 const aiProvider = document.querySelector('#aiProvider');
 const aiModel = document.querySelector('#aiModel');
+const editAiModelButton = document.querySelector('#editAiModel');
 const aiEndpoint = document.querySelector('#aiEndpoint');
 const aiKey = document.querySelector('#aiKey');
 const aiStatus = document.querySelector('#aiStatus');
@@ -436,8 +437,9 @@ const materials = {
   escapeShip: new THREE.MeshToonMaterial({ color: 0xe4ebef }),
   escapeShipDark: new THREE.MeshToonMaterial({ color: 0x56616e }),
   escapeShipCanopy: new THREE.MeshBasicMaterial({ color: 0x78d9ff, transparent: true, opacity: 0.82 }),
-  aiRoverBody: new THREE.MeshToonMaterial({ color: 0x6f7680 }),
-  aiRoverDark: new THREE.MeshToonMaterial({ color: 0x262b31 }),
+  aiRoverBody: new THREE.MeshToonMaterial({ color: 0xf8f8f3 }),
+  aiRoverTop: new THREE.MeshToonMaterial({ color: 0xffffff }),
+  aiRoverDark: new THREE.MeshToonMaterial({ color: 0x2b2d30 }),
   aiRoverLight: new THREE.MeshBasicMaterial({ color: 0x7fdcff, transparent: true, opacity: 0.86 }),
   aiRoverGlow: new THREE.MeshBasicMaterial({ color: 0x55d8ff, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }),
   aiShock: new THREE.MeshBasicMaterial({ color: 0x79ecff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }),
@@ -612,7 +614,6 @@ const escapePadGeometry = new THREE.TorusGeometry(0.82, 0.075, 10, 36);
 const escapeGlowGeometry = new THREE.RingGeometry(0.48, 1.22, 40);
 const escapeBeamGeometry = new THREE.ConeGeometry(0.86, 3.8, 32, 1, true);
 const aiRoverBodyGeometry = new THREE.CylinderGeometry(0.48, 0.58, 0.22, 28);
-const aiRoverDomeGeometry = new THREE.SphereGeometry(0.34, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2);
 const aiRoverGlowGeometry = new THREE.RingGeometry(0.44, 0.82, 36);
 const aiShockGeometry = new THREE.RingGeometry(0.68, 0.76, 48);
 const sphereGeometry = new THREE.SphereGeometry(0.26, 18, 14);
@@ -738,6 +739,7 @@ const state = {
   aiCompanionGroup: null,
   aiCompanionBusy: false,
   aiCompanionMessages: [],
+  aiChargeTimer: null,
   aiSeekerSlowTimer: 0,
   aiSeekerSlowMultiplier: 1,
   aiSeekerStunTimer: 0,
@@ -1031,6 +1033,39 @@ function aiHasKey() {
   return Boolean(readAiSettings().key);
 }
 
+function normalizeAiModelValue(value) {
+  return String(value || '')
+    .replace(/\s*\(recommended\)\s*$/i, '')
+    .trim() || AI_RECOMMENDED_MODEL;
+}
+
+function formatAiModelValue(model) {
+  const normalized = normalizeAiModelValue(model);
+  return normalized === AI_RECOMMENDED_MODEL ? `${normalized} (recommended)` : normalized;
+}
+
+function setAiModelEditing(editing) {
+  if (!aiModel) return;
+  if (editing) {
+    aiModel.removeAttribute('readonly');
+    aiModel.setAttribute('aria-readonly', 'false');
+    aiModel.value = normalizeAiModelValue(aiModel.value);
+    editAiModelButton?.classList.add('active');
+    editAiModelButton?.setAttribute('aria-label', 'Finish editing model');
+    editAiModelButton?.setAttribute('title', 'Finish editing model');
+    aiModel.focus();
+    aiModel.select();
+    return;
+  }
+  const model = normalizeAiModelValue(aiModel.value);
+  aiModel.value = formatAiModelValue(model);
+  aiModel.setAttribute('readonly', '');
+  aiModel.setAttribute('aria-readonly', 'true');
+  editAiModelButton?.classList.remove('active');
+  editAiModelButton?.setAttribute('aria-label', 'Edit model');
+  editAiModelButton?.setAttribute('title', 'Edit model');
+}
+
 function renderAiCompanionLog() {
   if (!aiCompanionLog) return;
   const messages = state.aiCompanionMessages.slice(-4);
@@ -1068,7 +1103,10 @@ function syncAiPanel() {
   const settings = readAiSettings();
   if (aiProvider) aiProvider.value = settings.provider;
   if (aiEndpoint) aiEndpoint.value = settings.endpoint;
-  if (aiModel) aiModel.value = `${settings.model} (recommended)`;
+  if (aiModel) {
+    aiModel.value = formatAiModelValue(settings.model);
+    setAiModelEditing(false);
+  }
   if (aiKey) aiKey.value = '';
   if (aiStatus) {
     aiStatus.textContent = settings.key
@@ -1092,17 +1130,50 @@ function setAiPanelTab(tab = 'chat') {
   });
 }
 
+function stopAiChargeAnimation() {
+  if (state.aiChargeTimer) {
+    window.clearTimeout(state.aiChargeTimer);
+    state.aiChargeTimer = null;
+  }
+  aiPanel?.classList.remove('ai-charging');
+  saveAiSettingsButton?.classList.remove('charging');
+  if (saveAiSettingsButton) {
+    saveAiSettingsButton.disabled = false;
+    saveAiSettingsButton.textContent = 'Save locally';
+  }
+}
+
+function runAiChargeAnimation() {
+  if (!aiPanel) return;
+  stopAiChargeAnimation();
+  aiPanel.classList.add('ai-charging');
+  if (aiStatus) aiStatus.textContent = 'Charging rover tools...';
+  if (saveAiSettingsButton) {
+    saveAiSettingsButton.classList.add('charging');
+    saveAiSettingsButton.disabled = true;
+    saveAiSettingsButton.textContent = 'Charging tools...';
+  }
+  if (state.aiCompanionGroup?.parent) addAiShockwave(state.aiCompanionGroup.position);
+  state.aiChargeTimer = window.setTimeout(() => {
+    stopAiChargeAnimation();
+    syncAiPanel();
+    addAiCompanionMessage('Rover: tools charged. Tell me how to bend the difficulty.');
+  }, 1250);
+}
+
 function saveAiSettings() {
   const existing = readAiSettings();
   const next = {
     provider: aiProvider?.value === 'openai-compatible' ? 'openai-compatible' : 'openai',
     endpoint: aiEndpoint?.value?.trim() || '',
     key: aiKey?.value?.trim() || existing.key || '',
-    model: existing.model || AI_RECOMMENDED_MODEL
+    model: normalizeAiModelValue(aiModel?.value || existing.model)
   };
   try {
     localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(next));
+    setAiModelEditing(false);
     syncAiPanel();
+    if (next.key) runAiChargeAnimation();
     setToast(next.key ? 'Rover companion online.' : 'Optional AI settings saved locally.');
   } catch {
     setToast('Could not save AI settings in this browser.', { urgent: true });
@@ -1115,6 +1186,7 @@ function clearAiSettings() {
   } catch {
     // Nothing else to do; the UI will still reset.
   }
+  stopAiChargeAnimation();
   syncAiPanel();
   setToast('Optional AI settings cleared.');
 }
@@ -2554,34 +2626,51 @@ function makeAiCompanionRover() {
   group.add(glow);
 
   const body = new THREE.Mesh(aiRoverBodyGeometry, materials.aiRoverBody);
-  body.position.y = 0.28;
-  body.scale.set(1.14, 1, 0.82);
+  body.position.y = 0.22;
+  body.scale.set(1.18, 0.72, 1.18);
   createLineBox(body, edgeMaterial);
   group.add(body);
 
   const base = new THREE.Mesh(aiRoverBodyGeometry, materials.aiRoverDark);
-  base.position.y = 0.16;
-  base.scale.set(1.02, 0.42, 0.76);
+  base.position.y = 0.105;
+  base.scale.set(1.08, 0.26, 1.08);
   createLineBox(base, softEdgeMaterial);
   group.add(base);
 
-  const dome = new THREE.Mesh(aiRoverDomeGeometry, materials.aiRoverLight.clone());
-  dome.position.y = 0.42;
-  dome.scale.set(0.92, 0.45, 0.92);
-  createLineBox(dome, softEdgeMaterial);
-  group.add(dome);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.035, 8, 42), materials.aiRoverDark);
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.315;
+  group.add(rim);
 
-  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.42, 8), materials.aiRoverDark);
-  antenna.position.set(0.26, 0.76, 0);
-  antenna.rotation.z = -0.16;
-  group.add(antenna);
+  const topPlate = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.035, 36), materials.aiRoverTop);
+  topPlate.position.y = 0.338;
+  createLineBox(topPlate, softEdgeMaterial);
+  group.add(topPlate);
 
-  const tip = new THREE.Mesh(smallSphereGeometry, materials.aiRoverLight.clone());
-  tip.position.set(0.3, 0.98, 0);
-  tip.scale.setScalar(0.7);
-  group.add(tip);
+  const logo = new THREE.Group();
+  const logoRadius = 0.22;
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (Math.PI * 2 * i) / 6;
+    const loop = new THREE.Mesh(openAiLoopGeometry, materials.openaiMark);
+    loop.rotation.x = Math.PI / 2;
+    loop.rotation.z = angle + Math.PI / 6;
+    loop.position.set(Math.cos(angle) * logoRadius * 0.5, 0, Math.sin(angle) * logoRadius * 0.5);
+    loop.scale.setScalar(0.58);
+    logo.add(loop);
+  }
+  const center = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.012, 8, 22), materials.openaiMark);
+  center.rotation.x = Math.PI / 2;
+  logo.add(center);
+  logo.position.y = 0.368;
+  logo.renderOrder = 5;
+  group.add(logo);
 
-  group.scale.setScalar(0.92);
+  const light = new THREE.Mesh(smallSphereGeometry, materials.aiRoverLight.clone());
+  light.position.set(0, 0.405, -0.38);
+  light.scale.set(1.15, 0.28, 0.58);
+  group.add(light);
+
+  group.scale.setScalar(0.96);
   return group;
 }
 
@@ -3151,7 +3240,13 @@ function openAiPanel() {
   setAiPanelTab(aiHasKey() ? 'chat' : 'settings');
   aiPanel.classList.remove('hidden');
   aiButton?.setAttribute('aria-expanded', 'true');
-  state.aiPausedGame = false;
+  if (state.started && state.round === 'playing') {
+    state.round = 'paused';
+    state.aiPausedGame = true;
+    showPauseOverlay('Paused.', { persist: true });
+  } else {
+    state.aiPausedGame = false;
+  }
   syncMobileControls();
 }
 
@@ -3165,6 +3260,7 @@ function closeAiPanel(options = {}) {
   aiButton?.setAttribute('aria-expanded', 'false');
   if (resume && state.aiPausedGame && state.started && state.round === 'paused') {
     state.round = 'playing';
+    if (pauseButton) pauseButton.textContent = 'Pause';
     if (notify) showPauseOverlay('Resumed.');
     else hidePauseOverlay();
   }
@@ -6726,6 +6822,13 @@ function bindEvents() {
   closeAiPanelButton?.addEventListener('click', () => closeAiPanel());
   aiTabButtons.forEach((button) => {
     button.addEventListener('click', () => setAiPanelTab(button.dataset.aiTab));
+  });
+  editAiModelButton?.addEventListener('click', () => setAiModelEditing(aiModel?.hasAttribute('readonly')));
+  aiModel?.addEventListener('keydown', (event) => {
+    if (event.code === 'Enter') {
+      event.preventDefault();
+      setAiModelEditing(false);
+    }
   });
   saveAiSettingsButton?.addEventListener('click', saveAiSettings);
   clearAiSettingsButton?.addEventListener('click', clearAiSettings);

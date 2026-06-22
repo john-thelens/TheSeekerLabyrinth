@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #171717;
   background: #000205;
@@ -104,7 +104,7 @@ button {
   gap: 28px;
   padding: calc(34px + var(--safe-top)) calc(22px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(22px + var(--safe-left));
   overflow-y: auto;
-  background: #f7f7f3;
+  background: #020712;
 }
 
 .start-screen::before {
@@ -113,21 +113,22 @@ button {
   inset: 0;
   z-index: 0;
   background:
-    radial-gradient(circle at 50% 26%, rgba(255, 255, 250, 0.72), transparent 34%),
-    linear-gradient(rgba(35, 37, 36, 0.075) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(35, 37, 36, 0.075) 1px, transparent 1px);
-  background-size: auto, 44px 44px, 44px 44px;
-  background-position: center, 0 0, 0 0;
+    radial-gradient(circle at 50% 25%, rgba(47, 84, 126, 0.26), transparent 36%),
+    radial-gradient(circle at 50% 62%, rgba(2, 7, 18, 0), rgba(0, 2, 8, 0.72) 72%),
+    linear-gradient(rgba(174, 203, 224, 0.095) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(174, 203, 224, 0.095) 1px, transparent 1px);
+  background-size: auto, auto, 44px 44px, 44px 44px;
+  background-position: center, center, 0 0, 0 0;
   animation: titleGridDrift 3.5s linear infinite;
 }
 
 @keyframes titleGridDrift {
   from {
-    background-position: center, 0 0, 0 0;
+    background-position: center, center, 0 0, 0 0;
   }
 
   to {
-    background-position: center, 44px 44px, 44px 44px;
+    background-position: center, center, 44px 44px, 44px 44px;
   }
 }
 
@@ -427,8 +428,8 @@ button {
 }
 
 .ai-rail-button img {
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   display: block;
   object-fit: contain;
   object-position: center;
@@ -543,41 +544,31 @@ button {
 .street-view-hint-icon {
   position: relative;
   flex: 0 0 auto;
-  width: 48px;
-  height: 34px;
-  border: 2px solid rgba(255, 255, 255, 0.76);
-  border-radius: 9px;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.22) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.18) 1px, transparent 1px),
-    rgba(255, 255, 255, 0.08);
-  background-size: 11px 11px;
+  width: 46px;
+  height: 38px;
 }
 
 .street-view-hint-cursor {
   position: absolute;
-  left: 17px;
-  top: 13px;
-  width: 14px;
-  height: 18px;
-  border: 2px solid #fff;
-  border-radius: 999px 999px 5px 5px;
-  background: rgba(255, 255, 255, 0.2);
-  box-shadow: 0 0 0 4px rgba(98, 185, 255, 0.16);
+  left: 10px;
+  top: 4px;
+  width: 30px;
+  height: 36px;
+  background: #fff;
+  clip-path: polygon(0 0, 0 31px, 9px 23px, 14px 35px, 21px 32px, 16px 21px, 29px 21px);
+  filter:
+    drop-shadow(1px 0 0 #17202b)
+    drop-shadow(-1px 0 0 #17202b)
+    drop-shadow(0 1px 0 #17202b)
+    drop-shadow(0 -1px 0 #17202b)
+    drop-shadow(0 0 10px rgba(111, 196, 255, 0.38));
   animation: streetHintDrag 1.25s ease-in-out infinite;
 }
 
 .street-view-hint-cursor::before {
   content: "";
   position: absolute;
-  left: 50%;
-  top: -8px;
-  width: 8px;
-  height: 8px;
-  border: 2px solid #fff;
-  border-radius: 50%;
-  transform: translateX(-50%);
-  background: rgba(98, 185, 255, 0.34);
+  inset: 0;
 }
 
 @keyframes streetHintEnter {
@@ -595,11 +586,11 @@ button {
 @keyframes streetHintDrag {
   0%,
   100% {
-    transform: translateX(-9px);
+    transform: translate(-7px, -2px);
   }
 
   50% {
-    transform: translateX(9px);
+    transform: translate(9px, 5px);
   }
 }
 
@@ -663,6 +654,15 @@ button {
   font-size: 28px;
   line-height: 1.02;
   letter-spacing: 0;
+}
+
+.ai-subtitle {
+  max-width: 320px;
+  margin: 7px 0 0;
+  color: #4b4b48;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.32;
 }
 
 .ai-panel button {
@@ -764,6 +764,40 @@ button {
   cursor: default;
 }
 
+.ai-model-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+}
+
+.ai-model-control .ai-model-box:not([readonly]) {
+  border-color: #111 !important;
+  background: #fff !important;
+  color: #111 !important;
+  cursor: text;
+}
+
+.ai-panel .ai-model-edit {
+  min-width: 0;
+  min-height: 42px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: #fff;
+}
+
+.ai-model-edit svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.ai-model-edit.active {
+  border-color: #111;
+  background: #111;
+  color: #fff;
+}
+
 .ai-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -774,6 +808,46 @@ button {
   border-color: #111;
   background: #111;
   color: #fff;
+}
+
+.ai-actions button.charging {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+}
+
+.ai-actions button.charging::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  background: linear-gradient(90deg, transparent, rgba(128, 221, 255, 0.65), transparent);
+  animation: aiButtonCharge 0.76s linear infinite;
+}
+
+.ai-panel.ai-charging .ai-status,
+.ai-panel.ai-charging .ai-companion-box {
+  border-color: rgba(45, 167, 255, 0.5);
+  box-shadow: 0 0 0 4px rgba(45, 167, 255, 0.11), 0 0 28px rgba(45, 167, 255, 0.16);
+}
+
+.ai-panel.ai-charging .ai-status {
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-panel.ai-charging .ai-status::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 7px;
+  height: 4px;
+  border-radius: 999px;
+  background:
+    repeating-linear-gradient(90deg, #111 0 10px, transparent 10px 16px),
+    linear-gradient(90deg, rgba(85, 216, 255, 0.25), rgba(85, 216, 255, 0.85));
+  animation: aiToolCharge 0.82s linear infinite;
 }
 
 .ai-companion-box {
@@ -852,6 +926,21 @@ button {
 
 .ai-footnote {
   margin: 0;
+}
+
+@keyframes aiButtonCharge {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes aiToolCharge {
+  from {
+    background-position: 0 0, 0 0;
+  }
+  to {
+    background-position: 32px 0, 0 0;
+  }
 }
 
 #gemPip {
