@@ -69,6 +69,7 @@ It can also handle deliberately extreme requests, including:
 | `make seekers speed 0.1x` | Heavily slow the seekers |
 | `make the player speed 20x` | Give the player a huge temporary boost |
 | `spawn 99 seekers` | Raise the seeker target and keep spawning agents |
+| `remove 90% of gems` | Remove that percent of the current unclaimed gems |
 | `remove more than half of the unclaimed gems` | Resolve the current unclaimed gem count and remove most of them |
 | `remove all seekers except for 1` | Keep one seeker active and recall the rest |
 

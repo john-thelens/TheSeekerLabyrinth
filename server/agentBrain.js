@@ -123,6 +123,26 @@ function amountForPrompt(text, fallback = 1) {
   return clampAmount(numberFromText(text) ?? multiplierFromText(text) ?? intensityFromText(text) ?? fallback);
 }
 
+function forcedActionFromPrompt(text) {
+  const change = /\b(remove|delete|despawn|less|fewer|take away|get rid of|clear|recall|reduce|drop|cut|trim|lower|add|more|extra|spawn|send|summon|increase|boost|speed up|slow|slower|fast|faster)\b|%|percent/.test(text);
+  if (!change) return null;
+  if (/\b(remove|delete|despawn|less|fewer|take away|get rid of|clear|reduce|drop|cut|trim|lower)\b/.test(text)) {
+    if (/\b(gems?|objectives?|diamonds?)\b/.test(text)) return 'remove_gem';
+    if (/\b(seekers?|agents?|guards?|chasers?)\b/.test(text)) return 'remove_seeker';
+    if (/\b(boxes?|crates?)\b/.test(text)) return 'remove_box';
+  }
+  if (/\b(add|more|extra|spawn|send|summon|increase)\b/.test(text)) {
+    if (/\b(gems?|objectives?|diamonds?)\b/.test(text)) return 'add_gem';
+    if (/\b(seekers?|agents?|guards?|chasers?)\b/.test(text)) return 'add_seeker';
+    if (/\b(boxes?|crates?)\b/.test(text)) return 'add_box';
+  }
+  if (/\b(i|me|my|myself|player|runner|avatar)\b/.test(text) && /\b(fast|faster|speed|boost|haste|quick|quicker|speed up)\b/.test(text)) return 'boost_player';
+  if (/\b(i|me|my|myself|player|runner|avatar)\b/.test(text) && /\b(slow|slower|reduce|decrease|less speed|too fast)\b/.test(text)) return 'slow_player';
+  if (/\b(seekers?|agents?|guards?|chasers?)\b/.test(text) && /\b(slow|slower|0\.\d+\s*x)\b/.test(text)) return 'slow_seekers';
+  if (/\b(seekers?|agents?|guards?|chasers?)\b/.test(text) && /\b(fast|faster|speed|boost|speed up)\b/.test(text)) return 'speed_seekers';
+  return null;
+}
+
 function fallbackAction(prompt = '') {
   const text = prompt.toLowerCase();
   const amount = amountForPrompt(text);
@@ -138,13 +158,13 @@ function fallbackAction(prompt = '') {
       ? { action: 'slow_seekers', amount: clampAmount(Math.ceil(1 / multiplier)), message: 'Seekers slowed to requested speed.' }
       : { action: 'speed_seekers', amount: clampAmount(Math.ceil(multiplier)), message: 'Seekers accelerated to requested speed.' };
   }
-  if (/(remove|delete|despawn|less|fewer|take away|get rid of|clear|recall).*(seekers?|agents?|guards?|chasers?)/.test(text)) {
+  if (/(remove|delete|despawn|less|fewer|take away|get rid of|clear|recall|reduce|drop|cut|trim|lower).*(seekers?|agents?|guards?|chasers?)/.test(text)) {
     return { action: 'remove_seeker', amount, message: 'Seeker pressure reduced.' };
   }
   if (/(more|extra|add|spawn|another|new).*(\d+\s+)?(a\s+)?(gems?|objectives?|diamonds?)/.test(text)) {
     return { action: 'add_gem', amount, message: 'Bonus gems deployed. Score adjusted for rover help.' };
   }
-  if (/(remove|delete|despawn|less|fewer|take away).*(\d+\s+)?(some\s+)?(gems?|objectives?|diamonds?)/.test(text)) {
+  if (/(remove|delete|despawn|less|fewer|take away|get rid of|clear|reduce|drop|cut|trim|lower).*(\d+\s+)?(some\s+)?(gems?|objectives?|diamonds?)/.test(text)) {
     return { action: 'remove_gem', amount, message: 'Unclaimed gems removed. Score adjusted for rover help.' };
   }
   if (/more seekers?|extra seekers?|add (a )?seeker|spawn (a )?seeker|send seekers?|summon seekers?/.test(text)) {
@@ -182,16 +202,19 @@ function normalizeAction(raw, prompt = '') {
   const fallback = fallbackAction(prompt);
   let action = ACTIONS.includes(source.action) ? source.action : fallback.action;
   const fallbackIsSpecific = fallback.action !== 'ease_game' && fallback.action !== 'reveal_hint';
+  const promptText = prompt.toLowerCase();
+  const forcedAction = forcedActionFromPrompt(promptText);
+  if (forcedAction) action = forcedAction;
   if (fallbackIsSpecific && action === 'reveal_hint') action = fallback.action;
-  const promptHasToolIntent = /\b(add|spawn|more|increase|remove|delete|less|fewer|slow|slower|fast|faster|speed|boost|harder|easier|easy|hard|very|super|extreme|maximum)\b/.test(prompt.toLowerCase());
+  const promptHasToolIntent = /\b(add|spawn|more|increase|remove|delete|less|fewer|slow|slower|fast|faster|speed|boost|harder|easier|easy|hard|very|super|extreme|maximum|get rid of|clear|reduce|drop|cut|trim|lower)\b|%|percent/.test(promptText);
   if (fallbackIsSpecific && promptHasToolIntent) action = fallback.action;
   const message = clampText(
-    fallbackIsSpecific && promptHasToolIntent
+    (fallbackIsSpecific && promptHasToolIntent) || forcedAction
       ? fallback.message
       : source.message || fallback.message,
     140
   );
-  const explicitAmount = numberFromText(prompt.toLowerCase());
+  const explicitAmount = numberFromText(promptText);
   const amount = clampAmount(Number(explicitAmount ?? source.amount ?? fallback.amount ?? 1));
   return { action, amount, message };
 }

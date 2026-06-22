@@ -4424,6 +4424,8 @@ function aiNumberFromText(text, fallback = null) {
 }
 
 function aiRelativeAmountFromText(text, action) {
+  const percentMatch = text.match(/\b(\d{1,2}(?:\.\d+)?)\s*(?:%|percent)\b/);
+  const percent = percentMatch ? Math.max(1, Math.min(99, Number(percentMatch[1]))) / 100 : null;
   const keepMatch = text.match(/\b(?:except(?:\s+for)?|leave|keep)\s+(\d{1,2})\b/);
   const keepCount = keepMatch ? Number(keepMatch[1]) : null;
   if (action.includes('seeker')) {
@@ -4436,6 +4438,9 @@ function aiRelativeAmountFromText(text, action) {
     if (/(all|every).*(seekers?|agents?|guards?|chasers?)/.test(text)) return Math.max(1, seekers - 1);
     if (/(more than half|more then half|over half|majority).*(seekers?|agents?|guards?|chasers?)/.test(text)) {
       return Math.max(1, Math.ceil(seekers * 0.6));
+    }
+    if (Number.isFinite(percent) && /(seekers?|agents?|guards?|chasers?)/.test(text)) {
+      return Math.max(1, Math.ceil(seekers * percent));
     }
     if (/\bhalf\b.*(seekers?|agents?|guards?|chasers?)/.test(text)) return Math.max(1, Math.ceil(seekers * 0.5));
     if (/\bmost\b.*(seekers?|agents?|guards?|chasers?)/.test(text)) return Math.max(1, Math.ceil(seekers * 0.75));
@@ -4450,6 +4455,9 @@ function aiRelativeAmountFromText(text, action) {
     if (/(all|every).*(gems?|objectives?|diamonds?)/.test(text)) return Math.max(1, unclaimed - 1);
     if (/(more than half|more then half|over half|majority).*(gems?|objectives?|diamonds?)/.test(text)) {
       return Math.max(1, Math.ceil(unclaimed * 0.6));
+    }
+    if (Number.isFinite(percent) && /(gems?|objectives?|diamonds?)/.test(text)) {
+      return Math.max(1, Math.ceil(unclaimed * percent));
     }
     if (/\bhalf\b.*(gems?|objectives?|diamonds?)/.test(text)) return Math.max(1, Math.ceil(unclaimed * 0.5));
     if (/\bmost\b.*(gems?|objectives?|diamonds?)/.test(text)) return Math.max(1, Math.ceil(unclaimed * 0.75));
@@ -4469,6 +4477,26 @@ function aiAmountForPrompt(text, max, fallback = 1) {
   return clampAiAmount(aiNumberFromText(text, null) ?? aiIntensityFromText(text) ?? fallback, max);
 }
 
+function aiForcedActionFromPrompt(text) {
+  const change = /\b(remove|delete|despawn|less|fewer|take away|get rid of|clear|recall|reduce|drop|cut|trim|lower|add|more|extra|spawn|send|summon|increase|boost|speed up|slow|slower|fast|faster)\b/.test(text);
+  if (!change) return null;
+  if (/\b(remove|delete|despawn|less|fewer|take away|get rid of|clear|reduce|drop|cut|trim|lower)\b/.test(text)) {
+    if (/\b(gems?|objectives?|diamonds?)\b/.test(text)) return 'remove_gem';
+    if (/\b(seekers?|agents?|guards?|chasers?)\b/.test(text)) return 'remove_seeker';
+    if (/\b(boxes?|crates?)\b/.test(text)) return 'remove_box';
+  }
+  if (/\b(add|more|extra|spawn|send|summon|increase)\b/.test(text)) {
+    if (/\b(gems?|objectives?|diamonds?)\b/.test(text)) return 'add_gem';
+    if (/\b(seekers?|agents?|guards?|chasers?)\b/.test(text)) return 'add_seeker';
+    if (/\b(boxes?|crates?)\b/.test(text)) return 'add_box';
+  }
+  if (/\b(i|me|my|myself|player|runner|avatar)\b/.test(text) && /\b(fast|faster|speed|boost|haste|quick|quicker|speed up)\b/.test(text)) return 'boost_player';
+  if (/\b(i|me|my|myself|player|runner|avatar)\b/.test(text) && /\b(slow|slower|reduce|decrease|less speed|too fast)\b/.test(text)) return 'slow_player';
+  if (/\b(seekers?|agents?|guards?|chasers?)\b/.test(text) && /\b(slow|slower|0\.\d+\s*x)\b/.test(text)) return 'slow_seekers';
+  if (/\b(seekers?|agents?|guards?|chasers?)\b/.test(text) && /\b(fast|faster|speed|boost|speed up)\b/.test(text)) return 'speed_seekers';
+  return null;
+}
+
 function inferLocalAiAction(prompt) {
   const text = prompt.toLowerCase();
   const speedMultiplier = aiSpeedMultiplierFromText(text);
@@ -4483,16 +4511,16 @@ function inferLocalAiAction(prompt) {
       ? { action: 'slow_seekers', amount: clampAiAmount(Math.ceil(1 / speedMultiplier), AI_TOOL_LIMITS.speed), message: 'Seekers slowed to requested speed.' }
       : { action: 'speed_seekers', amount: clampAiAmount(Math.ceil(speedMultiplier), AI_TOOL_LIMITS.speed), message: 'Seekers accelerated to requested speed.' };
   }
-  if (/(remove|delete|despawn|less|fewer|take away|get rid of|clear|recall).*(seekers?|agents?|guards?|chasers?)/.test(text)) {
+  if (/(remove|delete|despawn|less|fewer|take away|get rid of|clear|recall|reduce|drop|cut|trim|lower).*(seekers?|agents?|guards?|chasers?)/.test(text)) {
     return { action: 'remove_seeker', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.seeker), message: 'Seeker pressure reduced.' };
   }
   if (/(more|extra|add|spawn|send|summon).*(seekers?|agents?)/.test(text)) {
     return { action: 'add_seeker', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.seeker), message: 'Extra seekers entering. Risk reward raised.' };
   }
-  if (/(remove|delete|despawn|less|fewer|take away).*(gems?|objectives?)/.test(text)) {
+  if (/(remove|delete|despawn|less|fewer|take away|get rid of|clear|reduce|drop|cut|trim|lower).*(gems?|objectives?|diamonds?)/.test(text)) {
     return { action: 'remove_gem', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.gem), message: 'Objective count reduced. Score adjusted for rover help.' };
   }
-  if (/(more|extra|add|spawn|another|new).*(gems?|objectives?)/.test(text)) {
+  if (/(more|extra|add|spawn|another|new|increase).*(gems?|objectives?|diamonds?)/.test(text)) {
     return { action: 'add_gem', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.gem), message: 'Bonus objectives deployed. Score adjusted for rover help.' };
   }
   if (/(remove|delete|clear|despawn).*(boxes?|crates?)/.test(text)) {
@@ -4642,7 +4670,7 @@ function aiToolLimitForAction(action) {
 function promptHasExplicitAiToolIntent(prompt = '') {
   const text = String(prompt).toLowerCase();
   const hasTarget = /\b(seekers?|agents?|guards?|chasers?|gems?|diamonds?|boxes?|crates?|player|runner|me|my|avatar|speed|difficulty)\b/.test(text);
-  const hasChange = /\b(add|spawn|more|increase|remove|delete|less|fewer|slow|slower|fast|faster|speed|boost|harder|easier|easy|hard|very|super|extreme|maximum)\b/.test(text);
+  const hasChange = /\b(add|spawn|more|increase|remove|delete|less|fewer|slow|slower|fast|faster|speed|boost|harder|easier|easy|hard|very|super|extreme|maximum|get rid of|clear|reduce|drop|cut|trim|lower)\b|%|percent/.test(text);
   return hasTarget && hasChange;
 }
 
@@ -4652,6 +4680,8 @@ function normalizeAiCompanionAction(result, sourcePrompt = '') {
   let action = AI_ACTIONS.has(result?.action) ? result.action : fallback.action;
   const fallbackIsSpecific = fallback.action !== 'ease_game' && fallback.action !== 'reveal_hint';
   const promptHasToolIntent = promptHasExplicitAiToolIntent(sourcePrompt);
+  const forcedAction = aiForcedActionFromPrompt(promptText);
+  if (forcedAction) action = forcedAction;
   if (fallbackIsSpecific && action === 'reveal_hint') action = fallback.action;
   if (fallbackIsSpecific && promptHasToolIntent) {
     action = fallback.action;
@@ -4665,7 +4695,7 @@ function normalizeAiCompanionAction(result, sourcePrompt = '') {
       : Number(result?.amount ?? fallback.amount ?? 1);
   const amount = clampAiAmount(requestedAmount, aiToolLimitForAction(action));
   const message = String(
-    fallbackIsSpecific && promptHasToolIntent
+    (fallbackIsSpecific && promptHasToolIntent) || forcedAction
       ? fallback.message
       : result?.message || fallback.message || 'Rover action complete.'
   ).slice(0, 140);
