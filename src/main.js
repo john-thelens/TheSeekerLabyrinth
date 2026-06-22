@@ -233,6 +233,7 @@ const aiCommandInput = document.querySelector('#aiCommandInput');
 const aiCommandButton = document.querySelector('#aiCommandButton');
 const playerViewButton = document.querySelector('#playerViewButton');
 const playerViewLabel = document.querySelector('#playerViewLabel');
+const streetViewHint = document.querySelector('#streetViewHint');
 const developerSection = document.querySelector('.developer-section');
 const editorToolbar = document.querySelector('#editorToolbar');
 const editorToggle = document.querySelector('#editorToggle');
@@ -750,6 +751,7 @@ const state = {
     lastX: 0,
     lastY: 0
   },
+  streetViewHintTimer: 0,
   buildSerial: 0,
   toastTimer: 0,
   pauseOverlayTimer: 0,
@@ -3215,7 +3217,7 @@ function dragStreetViewLook(event) {
   const dy = event.clientY - drag.lastY;
   drag.lastX = event.clientX;
   drag.lastY = event.clientY;
-  state.player.group.rotation.y += dx * STREET_VIEW_LOOK_SENSITIVITY_X;
+  state.player.group.rotation.y -= dx * STREET_VIEW_LOOK_SENSITIVITY_X;
   state.streetLookPitch = Math.max(
     -STREET_VIEW_MAX_PITCH,
     Math.min(STREET_VIEW_MAX_PITCH, state.streetLookPitch - dy * STREET_VIEW_LOOK_SENSITIVITY_Y)
@@ -3223,6 +3225,18 @@ function dragStreetViewLook(event) {
   updateCamera(true);
   event.preventDefault();
   return true;
+}
+
+function showStreetViewHint() {
+  if (!streetViewHint) return;
+  streetViewHint.classList.remove('hidden');
+  state.streetViewHintTimer = 3.6;
+}
+
+function hideStreetViewHint() {
+  if (!streetViewHint) return;
+  streetViewHint.classList.add('hidden');
+  state.streetViewHintTimer = 0;
 }
 
 function syncPlayerViewButton() {
@@ -3240,11 +3254,15 @@ function syncPlayerViewButton() {
 function setPlayerViewMode(force = !state.playerViewMode) {
   const nextMode = Boolean(force);
   if (nextMode && !state.playerViewMode) state.streetLookPitch = 0;
-  if (!nextMode) resetStreetViewLook();
+  if (!nextMode) {
+    resetStreetViewLook();
+    hideStreetViewHint();
+  }
   state.playerViewMode = nextMode;
   syncPlayerViewButton();
   updateCameraProjection();
   updateCamera(true);
+  if (state.playerViewMode) showStreetViewHint();
   setToast(state.playerViewMode ? 'Street view on.' : 'Map view on.', { duration: 1.2 });
 }
 
@@ -3414,7 +3432,7 @@ function directionFromInput() {
 
   if (state.playerViewMode && state.player?.group) {
     const forwardInput = Math.max(-1, Math.min(1, -screenY));
-    const strafeInput = Math.max(-1, Math.min(1, screenX));
+    const strafeInput = Math.max(-1, Math.min(1, -screenX));
     const moveAmount = Math.min(1, Math.hypot(forwardInput, strafeInput));
     if (moveAmount < 0.05) return null;
     const yaw = state.player.group.rotation.y;
@@ -6582,6 +6600,10 @@ function animate() {
   if (state.pauseOverlayTimer > 0) {
     state.pauseOverlayTimer -= delta;
     if (state.pauseOverlayTimer <= 0) hidePauseOverlay();
+  }
+  if (state.streetViewHintTimer > 0) {
+    state.streetViewHintTimer -= delta;
+    if (state.streetViewHintTimer <= 0) hideStreetViewHint();
   }
   state.minimapTimer -= delta;
   if (state.minimapDirty || state.minimapTimer <= 0) {

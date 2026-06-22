@@ -10,9 +10,8 @@
 
     <main id="hud" aria-label="TheSeekerLabyrinth">
       <section id="startScreen" class="start-screen" aria-label="Main menu">
-        <div class="hero-image">
-          <div class="hero-island hero-island-main" aria-hidden="true"></div>
-          <h1>TheSeekerLabyrinth</h1>
+        <div class="hero-image" role="img" aria-label="TheSeekerLabyrinth night maze title art">
+          <h1 class="sr-only">TheSeekerLabyrinth</h1>
         </div>
 
         <button id="startButton" class="start-button" type="button">Start</button>
@@ -99,6 +98,13 @@
         <span class="pegman-icon" aria-hidden="true"></span>
         <span id="playerViewLabel" class="player-view-label">Open Street View</span>
       </button>
+
+      <div id="streetViewHint" class="street-view-hint hidden" aria-live="polite">
+        <span class="street-view-hint-icon" aria-hidden="true">
+          <span class="street-view-hint-cursor"></span>
+        </span>
+        <span>Drag the screen to move the camera</span>
+      </div>
 
       <section id="aiPanel" class="ai-panel hidden" aria-label="Optional AI settings">
         <div class="ai-panel-head">
