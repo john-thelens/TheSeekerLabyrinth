@@ -248,6 +248,10 @@ button {
 
 .start-screen > .start-button {
   margin-top: 8px;
+  border-color: rgba(255, 255, 246, 0.92);
+  box-shadow:
+    0 12px 0 rgba(0, 0, 0, 0.16),
+    0 0 0 2px rgba(8, 9, 11, 0.96);
 }
 
 .setup-panel {
