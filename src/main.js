@@ -165,10 +165,10 @@ const AI_TOOL_SCORE = {
   speed_seekers: 330
 };
 const AI_TOOL_LIMITS = {
-  gem: 12,
-  seeker: 12,
-  box: 10,
-  speed: 5
+  gem: 99,
+  seeker: 99,
+  box: 50,
+  speed: 20
 };
 const AI_ACTIONS = new Set(Object.keys(AI_TOOL_SCORE));
 // Keep false for public builds; flip locally when reshaping the shipped map.
@@ -4423,19 +4423,67 @@ function aiNumberFromText(text, fallback = null) {
   return fallback;
 }
 
+function aiRelativeAmountFromText(text, action) {
+  const keepMatch = text.match(/\b(?:except(?:\s+for)?|leave|keep)\s+(\d{1,2})\b/);
+  const keepCount = keepMatch ? Number(keepMatch[1]) : null;
+  if (action.includes('seeker')) {
+    const activeSeekers = state.seekers.length;
+    const targetSeekers = Number(seekerCountInput.value || activeSeekers);
+    const seekers = Math.max(activeSeekers, targetSeekers);
+    if (Number.isFinite(keepCount) && /(all|every|everyone|seekers?|agents?|guards?|chasers?)/.test(text)) {
+      return Math.max(0, seekers - keepCount);
+    }
+    if (/(all|every).*(seekers?|agents?|guards?|chasers?)/.test(text)) return Math.max(1, seekers - 1);
+    if (/(more than half|more then half|over half|majority).*(seekers?|agents?|guards?|chasers?)/.test(text)) {
+      return Math.max(1, Math.ceil(seekers * 0.6));
+    }
+    if (/\bhalf\b.*(seekers?|agents?|guards?|chasers?)/.test(text)) return Math.max(1, Math.ceil(seekers * 0.5));
+    if (/\bmost\b.*(seekers?|agents?|guards?|chasers?)/.test(text)) return Math.max(1, Math.ceil(seekers * 0.75));
+    return null;
+  }
+  if (action.includes('gem')) {
+    const unclaimed = Math.max(0, state.gems.length - state.collected);
+    if (!unclaimed) return null;
+    if (Number.isFinite(keepCount) && /(all|every|gems?|objectives?|diamonds?)/.test(text)) {
+      return Math.max(0, unclaimed - keepCount);
+    }
+    if (/(all|every).*(gems?|objectives?|diamonds?)/.test(text)) return Math.max(1, unclaimed - 1);
+    if (/(more than half|more then half|over half|majority).*(gems?|objectives?|diamonds?)/.test(text)) {
+      return Math.max(1, Math.ceil(unclaimed * 0.6));
+    }
+    if (/\bhalf\b.*(gems?|objectives?|diamonds?)/.test(text)) return Math.max(1, Math.ceil(unclaimed * 0.5));
+    if (/\bmost\b.*(gems?|objectives?|diamonds?)/.test(text)) return Math.max(1, Math.ceil(unclaimed * 0.75));
+    return null;
+  }
+  return null;
+}
+
+function aiSpeedMultiplierFromText(text) {
+  const match = text.match(/\b(\d{1,2}(?:\.\d+)?)\s*x\b/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? Math.max(0.1, Math.min(AI_TOOL_LIMITS.speed, value)) : null;
+}
+
 function aiAmountForPrompt(text, max, fallback = 1) {
   return clampAiAmount(aiNumberFromText(text, null) ?? aiIntensityFromText(text) ?? fallback, max);
 }
 
 function inferLocalAiAction(prompt) {
   const text = prompt.toLowerCase();
+  const speedMultiplier = aiSpeedMultiplierFromText(text);
   if (/\b(i|me|my|myself|player|runner|avatar)\b.*\b(slow|slower|reduce|decrease|less speed|too fast)\b|\b(slow|reduce|decrease).*\b(me|my speed|player|runner|avatar)\b/.test(text)) {
     return { action: 'slow_player', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.speed, 2), message: 'Player speed dampened for a moment.' };
   }
   if (/\b(i|me|my|myself|player|runner|avatar)\b.*\b(fast|faster|speed|boost|haste|quick|quicker)\b|\b(make|speed up|boost|increase).*\b(me|my speed|player|runner|avatar)\b/.test(text)) {
     return { action: 'boost_player', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.speed, 2), message: 'Player speed boosted.' };
   }
-  if (/(remove|delete|despawn|less|fewer|take away).*(seekers?|agents?)/.test(text)) {
+  if (Number.isFinite(speedMultiplier) && /\b(seekers?|agents?|guards?|chasers?)\b.*\b(speed|move|movement|pace)\b/.test(text)) {
+    return speedMultiplier < 1
+      ? { action: 'slow_seekers', amount: clampAiAmount(Math.ceil(1 / speedMultiplier), AI_TOOL_LIMITS.speed), message: 'Seekers slowed to requested speed.' }
+      : { action: 'speed_seekers', amount: clampAiAmount(Math.ceil(speedMultiplier), AI_TOOL_LIMITS.speed), message: 'Seekers accelerated to requested speed.' };
+  }
+  if (/(remove|delete|despawn|less|fewer|take away|get rid of|clear|recall).*(seekers?|agents?|guards?|chasers?)/.test(text)) {
     return { action: 'remove_seeker', amount: aiAmountForPrompt(text, AI_TOOL_LIMITS.seeker), message: 'Seeker pressure reduced.' };
   }
   if (/(more|extra|add|spawn|send|summon).*(seekers?|agents?)/.test(text)) {
@@ -4518,8 +4566,9 @@ function nearestUncollectedGemCell() {
 function spawnAiBonusGem() {
   if (state.escapeUnlocked) return null;
   const occupied = new Set(state.gems.filter((gem) => !gem.collected).map((gem) => `${gem.x},${gem.z}`));
-  const fallback = state.cells.filter((cell) => passableGemCell(cell) && !cell.stairs);
-  const candidates = [...usableGemSpawnCells(), ...fallback]
+  const safeFloor = state.cells.filter((cell) => passableGemCell(cell) && !cell.stairs);
+  const chaosFloor = state.cells.filter((cell) => cell?.active && !isEntryCell(cell) && !propBlocks(cell) && !boxAt(cell.x, cell.z));
+  const candidates = [...usableGemSpawnCells(), ...safeFloor, ...chaosFloor]
     .filter((cell, index, list) => (
       cell &&
       list.findIndex((item) => item?.x === cell.x && item?.z === cell.z) === index &&
@@ -4528,7 +4577,7 @@ function spawnAiBonusGem() {
     ));
   const pool = candidates.length
     ? candidates
-    : fallback.filter((cell) => !occupied.has(`${cell.x},${cell.z}`));
+    : chaosFloor.filter((cell) => !occupied.has(`${cell.x},${cell.z}`));
   if (!pool.length) return null;
   const cell = pool[Math.floor(Math.random() * pool.length)];
   const gem = { x: cell.x, z: cell.z, collected: false, bonus: true };
@@ -4569,7 +4618,7 @@ function removeAiObjectiveGem(count = 1) {
 
 function addAiSeekerTarget(count = 1) {
   const current = Number(seekerCountInput.value || 0);
-  const next = Math.min(30, current + count);
+  const next = Math.min(AI_TOOL_LIMITS.seeker, current + count);
   syncRange(startSeekerCountInput, seekerCountInput, startSeekerCountValue, seekerCountValue, next);
   let spawned = 0;
   while (!state.sandboxMode && state.seekersSpawned < next && spawned < count) {
@@ -4598,6 +4647,7 @@ function promptHasExplicitAiToolIntent(prompt = '') {
 }
 
 function normalizeAiCompanionAction(result, sourcePrompt = '') {
+  const promptText = sourcePrompt.toLowerCase();
   const fallback = inferLocalAiAction(sourcePrompt);
   let action = AI_ACTIONS.has(result?.action) ? result.action : fallback.action;
   const fallbackIsSpecific = fallback.action !== 'ease_game' && fallback.action !== 'reveal_hint';
@@ -4606,10 +4656,13 @@ function normalizeAiCompanionAction(result, sourcePrompt = '') {
   if (fallbackIsSpecific && promptHasToolIntent) {
     action = fallback.action;
   }
-  const explicitAmount = aiNumberFromText(sourcePrompt.toLowerCase(), null);
-  const requestedAmount = Number.isFinite(explicitAmount)
-    ? explicitAmount
-    : Number(result?.amount ?? fallback.amount ?? 1);
+  const explicitAmount = aiNumberFromText(promptText, null);
+  const relativeAmount = aiRelativeAmountFromText(promptText, action);
+  const requestedAmount = Number.isFinite(relativeAmount)
+    ? relativeAmount
+    : Number.isFinite(explicitAmount)
+      ? explicitAmount
+      : Number(result?.amount ?? fallback.amount ?? 1);
   const amount = clampAiAmount(requestedAmount, aiToolLimitForAction(action));
   const message = String(
     fallbackIsSpecific && promptHasToolIntent
@@ -4627,11 +4680,12 @@ function setSeekerSpeedByDelta(delta = 0) {
   return next - current;
 }
 
-function setPlayerSpeedEffect(amount = 1, faster = true) {
+function setPlayerSpeedEffect(amount = 1, faster = true, sourcePrompt = '') {
   const strength = clampAiAmount(amount, AI_TOOL_LIMITS.speed);
+  const explicitMultiplier = faster ? aiSpeedMultiplierFromText(sourcePrompt.toLowerCase()) : null;
   state.aiPlayerSpeedTimer = Math.max(state.aiPlayerSpeedTimer, 9 + strength * 2.5);
   state.aiPlayerSpeedMultiplier = faster
-    ? Math.max(1.22, 1 + strength * 0.16)
+    ? explicitMultiplier ?? Math.max(1.22, 1 + strength * 0.16)
     : Math.max(0.48, 1 - strength * 0.1);
   if (state.player?.group) {
     addAiBeam(state.player.group.position, faster ? 'green' : 'amber', {
@@ -4727,6 +4781,34 @@ function removeAiSeekers(count = 1) {
   return removed;
 }
 
+function aiActionMessage(action, amount, detail = {}) {
+  if (action === 'slow_seekers') {
+    return detail.multiplier
+      ? `Seekers slowed to ${detail.multiplier}x speed.`
+      : `${amount >= 4 ? 'Heavy' : 'Electric'} seeker slowdown fired.`;
+  }
+  if (action === 'stun_seekers') return amount >= 4 ? 'High-voltage stun burst fired.' : 'Seekers stunned for a moment.';
+  if (action === 'speed_seekers' || action === 'ramp_difficulty') {
+    return detail.multiplier
+      ? `Seekers boosted to ${detail.multiplier}x speed.`
+      : amount >= 4 ? 'Seekers are now much faster.' : 'Seekers accelerated.';
+  }
+  if (action === 'focus_seekers') return 'Seekers received a clean challenge ping.';
+  if (action === 'reveal_hint') return detail.success ? 'Hint pulse sent toward the nearest objective.' : 'No objective hint is available right now.';
+  if (action === 'add_gem') return detail.count ? `${detail.count} bonus gem${detail.count === 1 ? '' : 's'} deployed.` : 'No safe bonus gem spot is available right now.';
+  if (action === 'remove_gem') {
+    const remaining = Math.max(0, state.gems.length - state.collected);
+    return detail.count ? `${detail.count} unclaimed gem${detail.count === 1 ? '' : 's'} removed. ${remaining} remain.` : 'No removable gem is available right now.';
+  }
+  if (action === 'add_seeker') return detail.count ? `${detail.count} extra seeker${detail.count === 1 ? '' : 's'} entering.` : `Seeker target raised to ${detail.next ?? Number(seekerCountInput.value || 0)}.`;
+  if (action === 'remove_seeker') return detail.count ? `${detail.count} seeker${detail.count === 1 ? '' : 's'} recalled. ${state.seekers.length} remain.` : 'No active seeker can be recalled right now.';
+  if (action === 'add_box') return detail.count ? `${detail.count} push box${detail.count === 1 ? '' : 'es'} deployed.` : 'No safe box placement is available right now.';
+  if (action === 'remove_box') return detail.count ? `${detail.count} push box${detail.count === 1 ? '' : 'es'} cleared.` : 'No removable box is available right now.';
+  if (action === 'boost_player') return detail.multiplier ? `Player speed boosted to ${detail.multiplier}x.` : amount >= 4 ? 'Strong player speed boost online.' : 'Player speed boosted.';
+  if (action === 'slow_player') return amount >= 4 ? 'Player speed heavily dampened.' : 'Player speed dampened for a moment.';
+  return 'Rover action complete.';
+}
+
 function recordAiScore(action, amount = 1) {
   const modifier = AI_TOOL_SCORE[action] || 0;
   state.runStats.aiModifier = (state.runStats.aiModifier || 0) + modifier * Math.max(1, amount);
@@ -4741,32 +4823,39 @@ function applyAiCompanionAction(result, sourcePrompt = '') {
   ensureAiCompanion();
 
   if (action === 'slow_seekers') {
+    const multiplier = aiSpeedMultiplierFromText(sourcePrompt.toLowerCase());
     setSeekerSpeedByDelta(-Math.max(1, Math.floor(amount / 2)));
     state.aiSeekerSlowTimer = Math.max(state.aiSeekerSlowTimer, 8 + amount * 2);
-    state.aiSeekerSlowMultiplier = 1.55 + amount * 0.16;
+    state.aiSeekerSlowMultiplier = Number.isFinite(multiplier) && multiplier < 1
+      ? Math.min(12, 1 / multiplier)
+      : 1.55 + amount * 0.16;
     state.seekers.forEach((seeker) => addAiBeamToSeeker(seeker, 'electric', { life: 0.9, width: 1.48 + amount * 0.08 }));
     addAiShockwave();
-    message = amount >= 4 ? 'Heavy electric slowdown fired. Seekers are moving much slower.' : message;
+    message = aiActionMessage(action, amount, { multiplier: Number.isFinite(multiplier) && multiplier < 1 ? multiplier : null });
   } else if (action === 'stun_seekers') {
     state.aiSeekerStunTimer = Math.max(state.aiSeekerStunTimer, 1.6 + amount * 0.55);
     state.seekers.forEach((seeker) => addAiBeamToSeeker(seeker, 'electric', { life: 0.92, width: 1.56 + amount * 0.08 }));
     addAiShockwave();
-    message = amount >= 4 ? 'High-voltage stun burst fired.' : message;
+    message = aiActionMessage(action, amount);
   } else if (action === 'ramp_difficulty' || action === 'speed_seekers') {
+    const multiplier = aiSpeedMultiplierFromText(sourcePrompt.toLowerCase());
     setSeekerSpeedByDelta(amount);
     state.aiDifficultyTimer = Math.max(state.aiDifficultyTimer, 8 + amount * 2);
-    state.aiDifficultyMultiplier = Math.max(0.34, 0.86 - amount * 0.08);
+    state.aiDifficultyMultiplier = Number.isFinite(multiplier) && multiplier > 1
+      ? Math.max(0.08, 1 / multiplier)
+      : Math.max(0.34, 0.86 - amount * 0.08);
     state.seekers.forEach((seeker) => {
       seeker.group.userData.aiBoostTimer = Math.max(seeker.group.userData.aiBoostTimer || 0, 1.6 + amount * 0.25);
       addAiBeamToSeeker(seeker, 'green', { life: 0.82, width: 1.32 + amount * 0.06 });
     });
     triggerAgentBlackboard('sighting', state.player?.cell);
     setSquadMessages(amount >= 4 ? 'Rover surge accepted. Full pursuit speed.' : 'Rover raised the stakes. Converging faster.', 3.2);
-    message = amount >= 4 ? 'Seekers are now much faster.' : message;
+    message = aiActionMessage(action, amount, { multiplier: Number.isFinite(multiplier) && multiplier > 1 ? multiplier : null });
   } else if (action === 'focus_seekers') {
     if (state.player?.group) addAiBeam(state.player.group.position, 'amber', { targetYOffset: 0.85, life: 0.65, width: 1.28 });
     triggerAgentBlackboard('sighting', state.player?.cell);
     setSquadMessages('Rover broadcast a clean challenge ping.', 3.2);
+    message = aiActionMessage(action, amount);
   } else if (action === 'reveal_hint') {
     const cell = nearestUncollectedGemCell();
     if (cell) {
@@ -4776,6 +4865,7 @@ function applyAiCompanionAction(result, sourcePrompt = '') {
       state.minimapDirty = true;
       addAiBeamToCell(cell, 'electric', { targetYOffset: 1.1, life: 0.72, width: 1.18 });
     }
+    message = aiActionMessage(action, amount, { success: Boolean(cell) });
   } else if (action === 'add_gem') {
     let added = 0;
     for (let i = 0; i < amount; i += 1) {
@@ -4784,51 +4874,38 @@ function applyAiCompanionAction(result, sourcePrompt = '') {
       addAiBeamToCell(cell, 'electric', { targetYOffset: 1.12, life: 0.8, width: 1.32 });
       added += 1;
     }
-    if (added) {
-      message = `${added} bonus gem${added === 1 ? '' : 's'} deployed.`;
-    } else {
-      message = 'No safe bonus gem spot is available right now.';
-    }
+    message = aiActionMessage(action, amount, { count: added });
   } else if (action === 'remove_gem') {
     const removed = removeAiObjectiveGem(amount);
     if (removed) {
       addAiShockwave();
-      message = `${removed} unclaimed gem${removed === 1 ? '' : 's'} removed.`;
-    } else {
-      message = 'No removable gem is available right now.';
     }
+    message = aiActionMessage(action, amount, { count: removed });
   } else if (action === 'add_seeker') {
     const before = state.seekers.length;
     const { spawned, next } = addAiSeekerTarget(amount);
     state.seekers.slice(before).forEach((seeker) => addAiBeamToSeeker(seeker, 'amber', { life: 0.82, width: 1.34 }));
-    message = spawned
-      ? `${spawned} extra seeker${spawned === 1 ? '' : 's'} entering.`
-      : `Seeker target raised to ${next}.`;
+    message = aiActionMessage(action, amount, { count: spawned, next });
   } else if (action === 'remove_seeker') {
     const removed = removeAiSeekers(amount);
-    message = removed
-      ? `${removed} seeker${removed === 1 ? '' : 's'} recalled.`
-      : 'No active seeker can be recalled right now.';
+    message = aiActionMessage(action, amount, { count: removed });
   } else if (action === 'add_box') {
     const added = addAiBoxes(amount);
-    message = added
-      ? `${added} push box${added === 1 ? '' : 'es'} deployed.`
-      : 'No safe box placement is available right now.';
+    message = aiActionMessage(action, amount, { count: added });
   } else if (action === 'remove_box') {
     const removed = removeAiBoxes(amount);
-    message = removed
-      ? `${removed} push box${removed === 1 ? '' : 'es'} cleared.`
-      : 'No removable box is available right now.';
+    message = aiActionMessage(action, amount, { count: removed });
   } else if (action === 'boost_player') {
-    setPlayerSpeedEffect(amount, true);
-    message = amount >= 4 ? 'Strong player speed boost online.' : message;
+    setPlayerSpeedEffect(amount, true, sourcePrompt);
+    const multiplier = aiSpeedMultiplierFromText(sourcePrompt.toLowerCase());
+    message = aiActionMessage(action, amount, { multiplier });
   } else if (action === 'slow_player') {
-    setPlayerSpeedEffect(amount, false);
-    message = amount >= 4 ? 'Player speed heavily dampened.' : message;
+    setPlayerSpeedEffect(amount, false, sourcePrompt);
+    message = aiActionMessage(action, amount);
   } else {
     state.aiSeekerSlowTimer = Math.max(state.aiSeekerSlowTimer, 5 + amount);
     state.aiSeekerSlowMultiplier = 1.35 + amount * 0.08;
-    setPlayerSpeedEffect(Math.min(amount, 3), true);
+    setPlayerSpeedEffect(Math.min(amount, 3), true, sourcePrompt);
     state.seekers.slice(0, 4).forEach((seeker) => addAiBeamToSeeker(seeker, 'electric', { life: 0.72, width: 1.2 }));
     message = message || 'Pressure eased briefly.';
   }

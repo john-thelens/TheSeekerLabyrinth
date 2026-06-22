@@ -62,6 +62,18 @@ If an OpenAI API key is added, the rover can read natural text and adjust the ru
 
 Rover help and extra difficulty changes are reflected in the final score.
 
+It can also handle deliberately extreme requests, including:
+
+| Example prompt | What the rover can do |
+| --- | --- |
+| `make seekers speed 0.1x` | Heavily slow the seekers |
+| `make the player speed 20x` | Give the player a huge temporary boost |
+| `spawn 99 seekers` | Raise the seeker target and keep spawning agents |
+| `remove more than half of the unclaimed gems` | Resolve the current unclaimed gem count and remove most of them |
+| `remove all seekers except for 1` | Keep one seeker active and recall the rest |
+
+When gem requests go beyond the hand-placed spawn points, the game falls back to random valid floor tiles so the command still works.
+
 ## OpenAI Inspiration
 
 The seeker behavior is inspired by OpenAI's archived multi-agent hide-and-seek work:

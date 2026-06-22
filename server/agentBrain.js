@@ -34,7 +34,7 @@ const ACTION_SCHEMA = {
     amount: {
       type: 'integer',
       minimum: 1,
-      maximum: 12
+      maximum: 99
     }
   }
 };
@@ -72,17 +72,19 @@ function systemPrompt() {
     'Use add_box or remove_box when the player asks for boxes, crates, obstacles, or fewer boxes.',
     'Use boost_player or slow_player when the player asks to change player speed.',
     'Use speed_seekers when the player asks for seekers to be faster, very fast, or much faster.',
-    'Use the amount field for specific quantities and intensity words: slight=1, more=2, very=4, maximum/extreme=5.',
+    'Use the amount field for specific quantities and intensity words: slight=1, more=2, very=4, maximum/extreme=10.',
+    'Respect extreme numeric requests when they are explicit, such as 99 seekers or 20x player speed.',
+    'For relative requests such as remove more than half or remove all except one, choose the closest action and let the game resolve the exact live amount.',
     'Return short, diegetic messages. Never include coordinates, secrets, markdown, or extra keys.'
   ].join(' ');
 }
 
-function clampAmount(value, max = 12) {
+function clampAmount(value, max = 99) {
   return Math.max(1, Math.min(max, Number.isFinite(value) ? Math.round(value) : 1));
 }
 
 function intensityFromText(text) {
-  if (/\b(max|maximum|insane|extreme|super|way|massively|huge|tons?|a lot|lots|crazy)\b/.test(text)) return 5;
+  if (/\b(max|maximum|insane|extreme|super|way|massively|huge|tons?|a lot|lots|crazy)\b/.test(text)) return 10;
   if (/\b(very|really|much|significantly|greatly|fast fast|hard hard)\b/.test(text)) return 4;
   if (/\b(more|harder|faster|slower|easier|hard|easy)\b/.test(text)) return 2;
   return 1;
@@ -110,8 +112,15 @@ function numberFromText(text) {
   return null;
 }
 
+function multiplierFromText(text) {
+  const match = text.match(/\b(\d{1,2}(?:\.\d+)?)\s*x\b/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? Math.max(0.1, Math.min(99, value)) : null;
+}
+
 function amountForPrompt(text, fallback = 1) {
-  return clampAmount(numberFromText(text) ?? intensityFromText(text) ?? fallback);
+  return clampAmount(numberFromText(text) ?? multiplierFromText(text) ?? intensityFromText(text) ?? fallback);
 }
 
 function fallbackAction(prompt = '') {
@@ -123,7 +132,13 @@ function fallbackAction(prompt = '') {
   if (/\b(i|me|my|myself|player|runner|avatar)\b.*\b(fast|faster|speed|boost|haste|quick|quicker)\b|\b(make|speed up|boost|increase).*\b(me|my speed|player|runner|avatar)\b/.test(text)) {
     return { action: 'boost_player', amount, message: 'Player speed boosted.' };
   }
-  if (/(remove|delete|despawn|less|fewer|take away).*(seekers?|agents?)/.test(text)) {
+  const multiplier = multiplierFromText(text);
+  if (Number.isFinite(multiplier) && /\b(seekers?|agents?|guards?|chasers?)\b.*\b(speed|move|movement|pace)\b/.test(text)) {
+    return multiplier < 1
+      ? { action: 'slow_seekers', amount: clampAmount(Math.ceil(1 / multiplier)), message: 'Seekers slowed to requested speed.' }
+      : { action: 'speed_seekers', amount: clampAmount(Math.ceil(multiplier)), message: 'Seekers accelerated to requested speed.' };
+  }
+  if (/(remove|delete|despawn|less|fewer|take away|get rid of|clear|recall).*(seekers?|agents?|guards?|chasers?)/.test(text)) {
     return { action: 'remove_seeker', amount, message: 'Seeker pressure reduced.' };
   }
   if (/(more|extra|add|spawn|another|new).*(\d+\s+)?(a\s+)?(gems?|objectives?|diamonds?)/.test(text)) {
