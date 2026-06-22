@@ -4593,9 +4593,9 @@ async function handleAiCommand(event) {
     syncAiCompanionAvailability();
     return;
   }
-  if (state.round !== 'playing') {
-    addAiCompanionMessage('Rover: ready. Start a round and I can use game tools immediately.');
-    setToast('Start a round before using rover tools.');
+  if (!aiCanUseGameTools()) {
+    addAiCompanionMessage('Rover: start a run once, then I can help whenever you open this panel.');
+    setToast('Start a run once to activate rover tools.');
     return;
   }
   state.aiCompanionBusy = true;
@@ -4612,9 +4612,13 @@ function sendAiSuggestion(prompt) {
   if (!aiCommandInput || !prompt) return;
   aiCommandInput.value = prompt;
   aiCommandInput.focus();
-  if (aiHasKey() && state.round === 'playing' && !state.aiCompanionBusy) {
+  if (aiHasKey() && aiCanUseGameTools() && !state.aiCompanionBusy) {
     aiCommandForm?.requestSubmit();
   }
+}
+
+function aiCanUseGameTools() {
+  return Boolean(state.started && state.player?.group && (state.round === 'playing' || state.round === 'paused'));
 }
 
 function triggerAgentBlackboard(reason = 'signal', anchorCell = null, sourceSeeker = null) {
