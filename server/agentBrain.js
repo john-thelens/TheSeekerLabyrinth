@@ -9,13 +9,19 @@ const ACTIONS = [
   'reveal_hint',
   'add_gem',
   'remove_gem',
-  'add_seeker'
+  'add_seeker',
+  'remove_seeker',
+  'add_box',
+  'remove_box',
+  'boost_player',
+  'slow_player',
+  'speed_seekers'
 ];
 
 const ACTION_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['action', 'message'],
+  required: ['action', 'message', 'amount'],
   properties: {
     action: {
       type: 'string',
@@ -24,6 +30,11 @@ const ACTION_SCHEMA = {
     message: {
       type: 'string',
       maxLength: 140
+    },
+    amount: {
+      type: 'integer',
+      minimum: 1,
+      maximum: 12
     }
   }
 };
@@ -37,9 +48,11 @@ function compactGameState(gameState = {}) {
     difficulty: clampText(gameState.difficulty, 24),
     gemsCollected: Number(gameState.gemsCollected || 0),
     gemTotal: Number(gameState.gemTotal || 0),
+    boxCount: Number(gameState.boxCount || 0),
     seekerCount: Number(gameState.seekerCount || 0),
     seekersTarget: Number(gameState.seekersTarget || 0),
     seekerSpeed: Number(gameState.seekerSpeed || 0),
+    playerSpeedMultiplier: Number(gameState.playerSpeedMultiplier || 1),
     escapeUnlocked: Boolean(gameState.escapeUnlocked),
     playerCell: gameState.playerCell || null,
     activeEffects: gameState.activeEffects || {}
@@ -55,46 +68,109 @@ function systemPrompt() {
     'Use reveal_hint when the player asks where to go, where gems are, where the gate is, or asks for a hint.',
     'Use add_gem only when the player asks for more gems, a bonus gem, or a new objective.',
     'Use remove_gem only when the player asks for fewer gems, fewer objectives, or an easier route.',
-    'Use add_seeker only when the player asks for more seekers, extra pressure, or a more crowded chase.',
+    'Use add_seeker or remove_seeker when the player asks for a specific seeker count change.',
+    'Use add_box or remove_box when the player asks for boxes, crates, obstacles, or fewer boxes.',
+    'Use boost_player or slow_player when the player asks to change player speed.',
+    'Use speed_seekers when the player asks for seekers to be faster, very fast, or much faster.',
+    'Use the amount field for specific quantities and intensity words: slight=1, more=2, very=4, maximum/extreme=5.',
     'Return short, diegetic messages. Never include coordinates, secrets, markdown, or extra keys.'
   ].join(' ');
 }
 
+function clampAmount(value, max = 12) {
+  return Math.max(1, Math.min(max, Number.isFinite(value) ? Math.round(value) : 1));
+}
+
+function intensityFromText(text) {
+  if (/\b(max|maximum|insane|extreme|super|way|massively|huge|tons?|a lot|lots|crazy)\b/.test(text)) return 5;
+  if (/\b(very|really|much|significantly|greatly|fast fast|hard hard)\b/.test(text)) return 4;
+  if (/\b(more|harder|faster|slower|easier|hard|easy)\b/.test(text)) return 2;
+  return 1;
+}
+
+function numberFromText(text) {
+  const digit = text.match(/\b(\d{1,2})\b/);
+  if (digit) return Number(digit[1]);
+  const words = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    dozen: 12
+  };
+  for (const [word, value] of Object.entries(words)) {
+    if (new RegExp(`\\b${word}\\b`).test(text)) return value;
+  }
+  return null;
+}
+
+function amountForPrompt(text, fallback = 1) {
+  return clampAmount(numberFromText(text) ?? intensityFromText(text) ?? fallback);
+}
+
 function fallbackAction(prompt = '') {
   const text = prompt.toLowerCase();
+  const amount = amountForPrompt(text);
+  if (/(player|me|myself|runner|avatar).*(slow|slower|less speed|too fast)|slow (me|player|runner|avatar)/.test(text)) {
+    return { action: 'slow_player', amount, message: 'Player speed dampened for a moment.' };
+  }
+  if (/(player|me|myself|runner|avatar).*(fast|faster|speed|boost|haste)|speed (me|player|runner|avatar)|make me faster/.test(text)) {
+    return { action: 'boost_player', amount, message: 'Player speed boosted.' };
+  }
+  if (/(remove|delete|despawn|less|fewer|take away).*(seekers?|agents?)/.test(text)) {
+    return { action: 'remove_seeker', amount, message: 'Seeker pressure reduced.' };
+  }
   if (/more gems?|extra gems?|add (a )?gem|spawn (a )?gem|another gem|new gem/.test(text)) {
-    return { action: 'add_gem', message: 'Bonus gem deployed. Score adjusted for rover help.' };
+    return { action: 'add_gem', amount, message: 'Bonus gems deployed. Score adjusted for rover help.' };
   }
   if (/remove (some )?gems?|fewer gems?|less gems?|delete (some )?gems?|take away (some )?gems?/.test(text)) {
-    return { action: 'remove_gem', message: 'One unclaimed gem removed. Score adjusted for rover help.' };
+    return { action: 'remove_gem', amount, message: 'Unclaimed gems removed. Score adjusted for rover help.' };
   }
   if (/more seekers?|extra seekers?|add (a )?seeker|spawn (a )?seeker|send seekers?|summon seekers?/.test(text)) {
-    return { action: 'add_seeker', message: 'Extra seeker entering. Risk reward raised.' };
+    return { action: 'add_seeker', amount, message: 'Extra seekers entering. Risk reward raised.' };
+  }
+  if (/(remove|delete|clear|despawn).*(boxes?|crates?)/.test(text)) {
+    return { action: 'remove_box', amount, message: 'Push boxes cleared from the route.' };
+  }
+  if (/(more|extra|add|spawn|place).*(boxes?|crates?)/.test(text)) {
+    return { action: 'add_box', amount, message: 'New push boxes deployed.' };
   }
   if (/stun|shock|zap|freeze/.test(text)) {
-    return { action: 'stun_seekers', message: 'Shock burst fired. Seekers are stunned for a moment.' };
+    return { action: 'stun_seekers', amount, message: 'Shock burst fired. Seekers are stunned for a moment.' };
+  }
+  if (/(seekers?|agents?).*(very|really|much|way|super|maximum|max|faster|fast)|make (the )?(seekers?|agents?).*(fast|faster)|speed up (the )?(seekers?|agents?)/.test(text)) {
+    return { action: 'speed_seekers', amount, message: 'Seekers accelerated.' };
   }
   if (/hard|ramp|faster|harder|challenge|difficulty up|more intense/.test(text)) {
-    return { action: 'ramp_difficulty', message: 'Difficulty ramped. Seekers are moving with sharper intent.' };
+    return { action: 'ramp_difficulty', amount, message: 'Difficulty ramped. Seekers are moving with sharper intent.' };
   }
   if (/focus|find me|tell them|broadcast|ping me/.test(text)) {
-    return { action: 'focus_seekers', message: 'Challenge ping sent. Seekers know where to converge.' };
+    return { action: 'focus_seekers', amount: 1, message: 'Challenge ping sent. Seekers know where to converge.' };
   }
   if (/where|hint|gem|exit|gate|objective/.test(text)) {
-    return { action: 'reveal_hint', message: 'Hint pulse sent toward the nearest objective.' };
+    return { action: 'reveal_hint', amount: 1, message: 'Hint pulse sent toward the nearest objective.' };
   }
   if (/easy|easier|slow|calm|less difficult|help/.test(text)) {
-    return { action: 'slow_seekers', message: 'Electric slowdown fired. Seekers are moving slower.' };
+    return { action: 'slow_seekers', amount, message: 'Electric slowdown fired. Seekers are moving slower.' };
   }
-  return { action: 'ease_game', message: 'Pressure softened for a few seconds.' };
+  return { action: 'ease_game', amount: 1, message: 'Pressure softened for a few seconds.' };
 }
 
 function normalizeAction(raw, prompt = '') {
   const source = raw && typeof raw === 'object' ? raw : {};
-  const action = ACTIONS.includes(source.action) ? source.action : fallbackAction(prompt).action;
   const fallback = fallbackAction(prompt);
+  let action = ACTIONS.includes(source.action) ? source.action : fallback.action;
+  const fallbackIsSpecific = fallback.action !== 'ease_game' && fallback.action !== 'reveal_hint';
+  if (fallbackIsSpecific && action === 'reveal_hint') action = fallback.action;
   const message = clampText(source.message || fallback.message, 140);
-  return { action, message };
+  const amount = clampAmount(Number(source.amount ?? fallback.amount ?? 1));
+  return { action, amount, message };
 }
 
 function stripJsonFences(text = '') {

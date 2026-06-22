@@ -3042,7 +3042,7 @@ button {
   }
 
   .player-view-button {
-    top: calc(12px + var(--safe-top) + 112px + 10px);
+    top: calc(12px + var(--safe-top) + 112px + 12px);
     right: calc(10px + var(--safe-right));
     min-width: 40px;
     width: auto;
@@ -3525,6 +3525,56 @@ button {
     padding: 14px;
   }
 
+  .ai-panel {
+    top: calc(12px + var(--safe-top));
+    left: calc(12px + var(--safe-left));
+    width: clamp(320px, 34vw, 420px);
+    max-height: calc(100dvh - 24px - var(--safe-top) - var(--safe-bottom));
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 8px;
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  .ai-panel-head {
+    gap: 8px;
+  }
+
+  .ai-panel h2 {
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .ai-subtitle {
+    max-width: 260px;
+    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.22;
+  }
+
+  .ai-panel button {
+    min-height: 34px;
+    padding: 0 10px;
+  }
+
+  .ai-tabs {
+    padding: 3px;
+  }
+
+  .ai-panel .ai-tab {
+    min-height: 32px;
+  }
+
+  .ai-tab-panel {
+    gap: 8px;
+  }
+
+  .ai-companion-box,
+  .ai-status,
+  .ai-settings-card {
+    padding: 10px;
+  }
+
   .drawer-section {
     gap: 8px;
     padding-top: 10px;
@@ -3565,6 +3615,23 @@ button {
     top: calc(12px + var(--safe-top));
     width: clamp(108px, 16vw, 152px);
     max-height: calc(100dvh - 24px - var(--safe-top) - var(--safe-bottom));
+  }
+
+  .player-view-button {
+    top: calc(12px + var(--safe-top) + clamp(108px, 16vw, 152px) + 8px);
+    right: calc(12px + var(--safe-right));
+    height: 34px;
+    min-width: 96px;
+    max-width: clamp(108px, 16vw, 152px);
+    padding: 0 8px;
+    gap: 5px;
+  }
+
+  .player-view-label {
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 10px;
   }
 
   .map-panel .seeker-panel {

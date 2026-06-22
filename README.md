@@ -52,7 +52,15 @@ Controls can be remapped in game. Touch controls for mobile users can also be en
 - Night-time atmosphere with seeker flashlight vision
 - Difficulty settings for gem count, seeker count, and seeker speed
 - Scoring screen with bonuses and rank
-- Optional AI rover companion that can be enabled with an API key, while normal play remains fully local
+- Optional OpenAI API rover companion for mid-game difficulty changes
+
+## Optional OpenAI Rover
+
+The game works without an API key.
+
+If an OpenAI API key is added, the rover can read natural text and adjust the run. It can slow or speed seekers, change player speed, add or remove seekers, change gem count, and add boxes.
+
+Rover help and extra difficulty changes are reflected in the final score.
 
 ## OpenAI Inspiration
 
@@ -76,7 +84,8 @@ Codex helped turn those decisions into working code and made iteration faster. I
 - build seeker systems for roles, vision, pathfinding, prediction, traps, and shared alerts
 - create and refine the local map-building tools used during development
 - implement gems, escape gates, scoring, menus, touch controls, and responsive UI
+- integrate the optional OpenAI rover controller and its bounded game actions
 - revise the map, props, stairs, bridges, and themed areas based on playtesting feedback
 - run builds and local browser checks while the game evolved
 
-The human side shaped the game direction: deciding the isometric style, map layout, island themes, seeker-agent ideas, etc.
+The human side shaped the game direction. That included the isometric style, map layout, island themes, seeker-agent ideas, rover powers, and final gameplay choices.
